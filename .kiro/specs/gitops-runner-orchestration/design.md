@@ -459,7 +459,7 @@ egg "my-app" {
   
   gitlab {
     project_id = 12345
-    token_secret = "vault://gitlab/runner-token"
+    token_secret = "yc-lockbox://gitlab-tokens/my-app-runner-token"
   }
   
   environment {
@@ -468,6 +468,86 @@ egg "my-app" {
   }
 }
 ```
+
+**Example EggsBucket Configuration**:
+```hcl
+eggsbucket "microservices-team" {
+  type = "vm"  // Shared runner type for all repositories
+  
+  cloud {
+    provider = "yandex"
+    region   = "ru-central1-a"
+  }
+  
+  resources {
+    cpu    = 4
+    memory = 8192
+    disk   = 40
+  }
+  
+  runner {
+    tags = ["docker", "linux", "microservices"]
+    concurrent = 10  // Total concurrent jobs across all repos
+    idle_timeout = "15m"
+  }
+  
+  repositories {
+    repo "api-service" {
+      gitlab {
+        project_id = 12345
+        token_secret = "yc-lockbox://gitlab-tokens/api-service-token"
+      }
+    }
+    
+    repo "auth-service" {
+      gitlab {
+        project_id = 12346
+        token_secret = "yc-lockbox://gitlab-tokens/auth-service-token"
+      }
+    }
+    
+    repo "notification-service" {
+      gitlab {
+        project_id = 12347
+        token_secret = "yc-lockbox://gitlab-tokens/notification-service-token"
+      }
+    }
+  }
+  
+  environment {
+    DOCKER_DRIVER = "overlay2"
+    SHARED_CACHE  = "s3://team-cache-bucket"
+    TEAM_NAME     = "microservices"
+  }
+}
+```
+
+**Secret URI Schemes**:
+
+The system supports three secret storage backends with corresponding URI schemes:
+
+1. **Yandex Cloud Lockbox**: `yc-lockbox://{secret-id}/{key}`
+   - Example: `yc-lockbox://gitlab-tokens/runner-token`
+   - Used for Yandex Cloud deployments
+   - Requires IAM service account with `lockbox.payloadViewer` role
+
+2. **AWS Secrets Manager**: `aws-sm://{secret-name}/{key}`
+   - Example: `aws-sm://gitlab/runner-token`
+   - Used for AWS deployments
+   - Requires IAM role with `secretsmanager:GetSecretValue` permission
+
+3. **HashiCorp Vault**: `vault://{path}/{key}`
+   - Example: `vault://gitlab/runner-token`
+   - Optional backend for hybrid or on-premises deployments
+   - Requires Vault token or AppRole authentication
+
+**Secret Masking**:
+
+All secret values are automatically masked in:
+- Log outputs (replaced with `***MASKED***`)
+- API responses
+- Error messages
+- Metrics and traces
 
 **Example Job Configuration**:
 ```hcl
@@ -1111,6 +1191,235 @@ class TofuProvidersVer:
   - Enables query plan caching
   - Improves performance for repeated queries
 
+### Secret Management Models
+
+**Secret URI Parsing**:
+
+The system supports three secret storage backends with corresponding URI schemes:
+
+```python
+from enum import Enum
+from typing import Optional
+from pydantic import BaseModel, validator
+
+class SecretBackend(str, Enum):
+    YC_LOCKBOX = "yc-lockbox"
+    AWS_SM = "aws-sm"
+    VAULT = "vault"
+
+class SecretReference(BaseModel):
+    """Parsed secret URI reference"""
+    backend: SecretBackend
+    secret_id: str      # Secret ID or name
+    key: str            # Key within the secret
+    raw_uri: str        # Original URI string
+    
+    @classmethod
+    def parse(cls, uri: str) -> "SecretReference":
+        """Parse secret URI into components
+        
+        Examples:
+            yc-lockbox://gitlab-tokens/runner-token
+            aws-sm://gitlab/runner-token
+            vault://secret/data/gitlab/runner-token
+        """
+        if "://" not in uri:
+            raise ValueError(f"Invalid secret URI format: {uri}")
+        
+        backend_str, path = uri.split("://", 1)
+        backend = SecretBackend(backend_str)
+        
+        # Parse path into secret_id and key
+        parts = path.split("/")
+        if len(parts) < 2:
+            raise ValueError(f"Secret URI must have format: {backend}://secret-id/key")
+        
+        secret_id = parts[0]
+        key = "/".join(parts[1:])
+        
+        return cls(
+            backend=backend,
+            secret_id=secret_id,
+            key=key,
+            raw_uri=uri
+        )
+
+class SecretValue(BaseModel):
+    """Retrieved secret value with metadata"""
+    value: str
+    version: Optional[str] = None
+    created_at: Optional[str] = None
+    backend: SecretBackend
+    
+    def masked(self) -> str:
+        """Return masked representation for logging"""
+        return "***MASKED***"
+
+class SecretCache(BaseModel):
+    """Cached secret with TTL"""
+    secret_ref: SecretReference
+    value: SecretValue
+    cached_at: float  # Unix timestamp
+    ttl: int = 300    # Default 5 minutes
+    
+    def is_expired(self, current_time: float) -> bool:
+        """Check if cache entry is expired"""
+        return (current_time - self.cached_at) > self.ttl
+```
+
+**Secret Retrieval Interface**:
+
+```python
+from abc import ABC, abstractmethod
+
+class SecretManager(ABC):
+    """Abstract interface for secret management"""
+    
+    @abstractmethod
+    async def get_secret(self, ref: SecretReference) -> SecretValue:
+        """Retrieve secret value from backend"""
+        pass
+    
+    @abstractmethod
+    async def put_secret(self, ref: SecretReference, value: str) -> None:
+        """Store secret value in backend"""
+        pass
+    
+    @abstractmethod
+    async def rotate_secret(self, ref: SecretReference) -> SecretValue:
+        """Rotate secret and return new value"""
+        pass
+
+class YandexLockboxManager(SecretManager):
+    """Yandex Cloud Lockbox implementation"""
+    
+    def __init__(self, service_account_key: str):
+        self.client = yandexcloud.SDK(service_account_key=service_account_key)
+        self.lockbox = self.client.client(lockbox_v1.payload_service_pb2_grpc.PayloadServiceStub)
+    
+    async def get_secret(self, ref: SecretReference) -> SecretValue:
+        """Retrieve secret from Yandex Cloud Lockbox"""
+        response = await self.lockbox.Get(
+            lockbox_v1.payload_service_pb2.GetPayloadRequest(
+                secret_id=ref.secret_id
+            )
+        )
+        
+        # Find the specific key in the payload
+        for entry in response.entries:
+            if entry.key == ref.key:
+                return SecretValue(
+                    value=entry.text_value,
+                    version=response.version_id,
+                    backend=SecretBackend.YC_LOCKBOX
+                )
+        
+        raise KeyError(f"Key {ref.key} not found in secret {ref.secret_id}")
+
+class AWSSecretsManager(SecretManager):
+    """AWS Secrets Manager implementation"""
+    
+    def __init__(self, region: str):
+        self.client = aioboto3.Session().client('secretsmanager', region_name=region)
+    
+    async def get_secret(self, ref: SecretReference) -> SecretValue:
+        """Retrieve secret from AWS Secrets Manager"""
+        async with self.client as sm:
+            response = await sm.get_secret_value(SecretId=ref.secret_id)
+            
+            # Parse JSON secret and extract key
+            import json
+            secret_data = json.loads(response['SecretString'])
+            
+            if ref.key not in secret_data:
+                raise KeyError(f"Key {ref.key} not found in secret {ref.secret_id}")
+            
+            return SecretValue(
+                value=secret_data[ref.key],
+                version=response.get('VersionId'),
+                created_at=response.get('CreatedDate'),
+                backend=SecretBackend.AWS_SM
+            )
+
+class SecretManagerFactory:
+    """Factory for creating appropriate secret manager"""
+    
+    @staticmethod
+    def create(backend: SecretBackend, **kwargs) -> SecretManager:
+        if backend == SecretBackend.YC_LOCKBOX:
+            return YandexLockboxManager(kwargs['service_account_key'])
+        elif backend == SecretBackend.AWS_SM:
+            return AWSSecretsManager(kwargs['region'])
+        elif backend == SecretBackend.VAULT:
+            return VaultManager(kwargs['vault_addr'], kwargs['vault_token'])
+        else:
+            raise ValueError(f"Unsupported secret backend: {backend}")
+```
+
+**Secret Masking Utility**:
+
+```python
+import re
+from typing import Any, Dict
+
+class SecretMasker:
+    """Utility for masking secrets in logs and outputs"""
+    
+    # Patterns that might contain secrets
+    SECRET_PATTERNS = [
+        r'token[_-]?secret\s*=\s*["\']([^"\']+)["\']',
+        r'password\s*=\s*["\']([^"\']+)["\']',
+        r'api[_-]?key\s*=\s*["\']([^"\']+)["\']',
+        r'secret\s*=\s*["\']([^"\']+)["\']',
+    ]
+    
+    # Secret URI patterns
+    SECRET_URI_PATTERN = r'(yc-lockbox|aws-sm|vault)://[^\s"\']+'
+    
+    @staticmethod
+    def mask_string(text: str) -> str:
+        """Mask secrets in a string"""
+        masked = text
+        
+        # Mask secret URIs
+        masked = re.sub(
+            SecretMasker.SECRET_URI_PATTERN,
+            lambda m: f"{m.group(1)}://***MASKED***",
+            masked
+        )
+        
+        # Mask secret values
+        for pattern in SecretMasker.SECRET_PATTERNS:
+            masked = re.sub(pattern, r'\1=***MASKED***', masked)
+        
+        return masked
+    
+    @staticmethod
+    def mask_dict(data: Dict[str, Any]) -> Dict[str, Any]:
+        """Recursively mask secrets in a dictionary"""
+        masked = {}
+        
+        for key, value in data.items():
+            # Check if key suggests it's a secret
+            if any(secret_word in key.lower() for secret_word in ['token', 'password', 'secret', 'key']):
+                masked[key] = "***MASKED***"
+            elif isinstance(value, str):
+                masked[key] = SecretMasker.mask_string(value)
+            elif isinstance(value, dict):
+                masked[key] = SecretMasker.mask_dict(value)
+            elif isinstance(value, list):
+                masked[key] = [
+                    SecretMasker.mask_dict(item) if isinstance(item, dict)
+                    else SecretMasker.mask_string(item) if isinstance(item, str)
+                    else item
+                    for item in value
+                ]
+            else:
+                masked[key] = value
+        
+        return masked
+```
+
 **YDB Implementation**:
 ```python
 # Async operations with prepared queries
@@ -1268,6 +1577,24 @@ A property is a characteristic or behavior that should hold true across all vali
 *For any* .fly configuration with variable references, parsing and evaluation should correctly substitute variable values.
 
 **Validates: Requirements 2.7**
+
+### Property 4a: Fly Parser EggsBucket Support
+
+*For any* valid eggsbucket configuration with multiple repositories, parsing should correctly represent all repository blocks in the AST.
+
+**Validates: Requirements 1.6, 1.7, 2.8**
+
+### Property 4b: Secret URI Parsing
+
+*For any* valid secret URI (yc-lockbox://, aws-sm://, vault://), parsing should correctly extract the backend, secret_id, and key components.
+
+**Validates: Requirements 2.9, 16.8**
+
+### Property 4c: Secret Masking in Logs
+
+*For any* log output or error message containing secret values or secret URIs, the masked output should replace sensitive data with "***MASKED***".
+
+**Validates: Requirements 16.9**
 
 ### Property 5: Nest Initialization Structure
 
@@ -1454,6 +1781,48 @@ A property is a characteristic or behavior that should hold true across all vali
 *For any* communication between runners and backend servers, the connection should use TLS 1.3 or higher.
 
 **Validates: Requirements 16.5**
+
+### Property 36: Secret Retrieval from Yandex Cloud Lockbox
+
+*For any* secret reference with yc-lockbox:// URI, the system should retrieve the secret value from Yandex Cloud Lockbox using the specified secret_id and key.
+
+**Validates: Requirements 16.7, 17.1**
+
+### Property 37: Secret Retrieval from AWS Secrets Manager
+
+*For any* secret reference with aws-sm:// URI, the system should retrieve the secret value from AWS Secrets Manager using the specified secret_name and key.
+
+**Validates: Requirements 16.7, 17.2**
+
+### Property 38: Secret Cache TTL
+
+*For any* cached secret, querying after the TTL expires should trigger a fresh retrieval from the secret backend.
+
+**Validates: Requirements 16.11**
+
+### Property 39: Invalid Secret Reference Error
+
+*For any* invalid or inaccessible secret reference, deployment should fail with a descriptive error message indicating which secret could not be retrieved.
+
+**Validates: Requirements 16.12**
+
+### Property 40: Secret Rotation Propagation
+
+*For any* rotated secret, all active runners using that secret should be updated with the new value within the configured update interval.
+
+**Validates: Requirements 17.6**
+
+### Property 41: EggsBucket Repository Isolation
+
+*For any* EggsBucket with multiple repositories, webhook events should only trigger runners for the specific repository that generated the event.
+
+**Validates: Requirements 1.6, 1.7**
+
+### Property 42: EggsBucket Shared Configuration
+
+*For any* EggsBucket configuration, all repositories in the bucket should share the same runner type, resources, and cloud configuration.
+
+**Validates: Requirements 1.6**
 
 ## Error Handling
 

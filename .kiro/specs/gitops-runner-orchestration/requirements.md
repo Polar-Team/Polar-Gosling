@@ -8,7 +8,7 @@ The Polar Gosling GitOps Runner Orchestration system is a comprehensive platform
 
 - **Nest**: The main GitOps repository that configures and manages runners for downstream repositories
 - **Egg**: A single managed repository configured by the Nest
-- **EggsBucket**: A group of multiple managed repositories configured together
+- **EggsBucket**: A group of multiple managed repositories configured together with shared runner configuration
 - **MotherGoose**: The primary backend server that handles job orchestration, webhook processing, and runner deployment
 - **UglyFox**: The secondary backend server responsible for pruning failed runners and managing runner lifecycle states
 - **Apex**: Active running runner VM/containers (with quantity and resource limits)
@@ -19,6 +19,9 @@ The Polar Gosling GitOps Runner Orchestration system is a comprehensive platform
 - **Runner**: A CI/CD execution environment (VM or serverless container) that executes GitLab jobs
 - **Serverless_Runner**: A containerized runner with 60-minute execution limit
 - **VM_Runner**: A virtual machine-based runner with persistent agent for long-running jobs
+- **Secret_URI**: A URI scheme for referencing secrets stored in cloud secret management services (yc-lockbox://, aws-sm://, vault://)
+- **Yandex_Cloud_Lockbox**: Yandex Cloud's secret management service for storing and retrieving sensitive data
+- **AWS_Secrets_Manager**: AWS's secret management service for storing and retrieving sensitive data
 
 ## Requirements
 
@@ -33,8 +36,10 @@ The Polar Gosling GitOps Runner Orchestration system is a comprehensive platform
 3. THE Nest_Repository SHALL contain a "UF" directory for UglyFox configuration
 4. WHEN an Egg is a single project, THE Eggs_Directory SHALL contain a project folder with a config.fly file
 5. WHEN multiple projects are grouped, THE Eggs_Directory SHALL contain an EggsBucket folder with a config.fly file
-6. THE Jobs_Directory SHALL contain files named with pattern "{job_name}.fly"
-7. THE UF_Directory SHALL contain a file named "config.fly" with runner pruning policies
+6. THE EggsBucket_Config SHALL define shared runner configuration for multiple repositories
+7. THE EggsBucket_Config SHALL contain a "repositories" block listing all managed repositories
+8. THE Jobs_Directory SHALL contain files named with pattern "{job_name}.fly"
+9. THE UF_Directory SHALL contain a file named "config.fly" with runner pruning policies
 
 ### Requirement 2: Fly Language Parser and Interpreter
 
@@ -49,6 +54,8 @@ The Polar Gosling GitOps Runner Orchestration system is a comprehensive platform
 5. WHEN a .fly file contains type errors, THE Fly_Parser SHALL return descriptive error messages
 6. THE Fly_Parser SHALL support nested block structures for complex configurations
 7. THE Fly_Parser SHALL support variable interpolation and references
+8. THE Fly_Parser SHALL support both "egg" and "eggsbucket" block types
+9. THE Fly_Parser SHALL parse secret references using URI schemes (yc-lockbox://, aws-sm://, vault://)
 
 ### Requirement 3: Gosling CLI Tool for Nest Bootstrapping and Deployment
 
@@ -254,4 +261,26 @@ The Polar Gosling GitOps Runner Orchestration system is a comprehensive platform
 4. THE System SHALL encrypt sensitive data at rest in the database
 5. THE System SHALL encrypt runner communication with backend servers
 6. THE System SHALL implement least-privilege access for all components
-7. THE System SHALL support secret injection into runners from secure storage (Vault, AWS Secrets Manager)
+7. THE System SHALL support secret injection into runners from Yandex Cloud Lockbox, AWS Secrets Manager, and HashiCorp Vault
+8. THE System SHALL use URI schemes to reference secrets: yc-lockbox://{secret-id}/{key}, aws-sm://{secret-name}/{key}, vault://{path}/{key}
+9. WHEN secrets are referenced in .fly files, THE System SHALL mask secret values in logs and outputs
+10. THE System SHALL retrieve secrets at runtime from the appropriate secret storage backend
+11. THE System SHALL cache retrieved secrets with configurable TTL to minimize API calls
+12. WHEN a secret reference is invalid or inaccessible, THE System SHALL fail deployment with a descriptive error message
+
+### Requirement 17: Secret Storage and Management
+
+**User Story:** As a security engineer, I want centralized secret management, so that sensitive credentials are never stored in configuration files or version control.
+
+#### Acceptance Criteria
+
+1. THE System SHALL store GitLab runner tokens in Yandex Cloud Lockbox (for Yandex Cloud deployments)
+2. THE System SHALL store GitLab runner tokens in AWS Secrets Manager (for AWS deployments)
+3. THE System SHALL support HashiCorp Vault as an optional secret backend
+4. WHEN storing secrets, THE System SHALL use cloud-native encryption at rest
+5. THE System SHALL support automatic secret rotation for GitLab runner tokens
+6. WHEN a secret is rotated, THE System SHALL update all active runners with the new secret
+7. THE System SHALL log secret access events for audit purposes (without logging secret values)
+8. THE System SHALL enforce secret access policies based on IAM roles and service accounts
+9. WHEN parsing .fly files, THE System SHALL validate secret URI syntax before deployment
+10. THE System SHALL support secret versioning to enable rollback of secret changes

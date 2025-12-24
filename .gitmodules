@@ -1,0 +1,6 @@
+[submodule "backends"]
+	path = backends
+	url = https://github.com/Polar-Team/Polar-Gosling-Backends
+[submodule "compute-module"]
+	path = compute-module
+	url = https://github.com/Polar-Team/Polar-Gosling-Compute-Module

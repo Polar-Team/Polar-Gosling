@@ -15,9 +15,16 @@ The system supports deployment to Yandex Cloud and AWS using native Go SDKs, wit
 
 **Key Architectural Decisions**:
 
+- **True GitOps Architecture**: Nest Git repository is the single source of truth for all configuration; database stores only runtime state
+- **Periodic Git Sync**: MotherGoose periodically clones/pulls Nest repo (every 5 minutes via Celery Beat) to sync configurations to database cache
+- **Event-Driven Sync**: GitLab webhooks trigger immediate Git sync on push events to Nest repository
+- **Zero Secrets in Config**: All secrets stored in cloud secret managers (Yandex Cloud Lockbox / AWS Secrets Manager); configurations contain only secret URI references
+- **Per-Egg Webhook Secrets**: Each Egg has its own webhook secret for security isolation and independent rotation
+- **Deploy Key Authentication**: MotherGoose, UglyFox, and SelfJobs use SSH deploy keys stored in secret manager to access Nest repository
 - **Serverless Backends**: MotherGoose and UglyFox run as serverless functions (Yandex Cloud Functions / AWS Lambda) for cost efficiency and automatic scaling
 - **Event-Driven Processing**: Celery task queue enables asynchronous, scalable job processing triggered by webhooks and scheduled events
 - **API Gateway**: All backend access goes through API Gateway (Yandex Cloud API Gateway / AWS API Gateway) with OpenAPI specifications and function-level authentication
+- **Database as Cache**: Database caches parsed .fly configurations from Git for fast runtime access; Git remains authoritative
 - **State Management**: OpenTofu states stored exclusively in S3 buckets with state locking via DynamoDB/YDB
 - **Deployment Plans**: Binary deployment plans stored in DynamoDB/YDB for proper rollback without re-planning
 - **Binary Management**: OpenTofu binaries stored in S3 and mounted to runners at `/mnt/tofu/{version}` with version management and checksum verification
@@ -27,14 +34,308 @@ The system supports deployment to Yandex Cloud and AWS using native Go SDKs, wit
 
 ## Architecture
 
+### GitOps Architecture and Data Flow
+
+The system follows a true GitOps architecture where the Nest Git repository is the single source of truth for all configuration.
+
+#### Configuration vs State Separation
+
+**Git Repository (Configuration - Source of Truth)**:
+- Egg configurations (.fly files in `Eggs/` directory)
+- Job definitions (.fly files in `Jobs/` directory)
+- UglyFox policies (.fly file in `UF/` directory)
+- Version history (via Git commits)
+- **NO secrets** - only secret URI references
+
+**Database (Runtime State - Cache)**:
+- Parsed Egg configurations (synced from Git every 5 minutes)
+- Runner status (provisioning, active, idle, terminated)
+- Runner metrics (CPU, memory, disk, heartbeats)
+- Deployment history (which Git commit deployed which runner)
+- Audit logs (who did what, when)
+- **NO secrets** - only secret URI references
+
+**Secret Storage (Yandex Cloud Lockbox / AWS Secrets Manager)**:
+- SSH deploy keys (private and public)
+- Nest repository URL
+- Per-Egg webhook secrets
+- GitLab runner tokens
+- Application API keys
+- All sensitive credentials
+
+#### GitOps Sync Flow
+
+```mermaid
+graph TB
+    subgraph "Source of Truth"
+        NestRepo[Nest Git Repository<br/>Eggs/, Jobs/, UF/]
+    end
+    
+    subgraph "Secret Storage"
+        Lockbox[Yandex Cloud Lockbox /<br/>AWS Secrets Manager]
+    end
+    
+    subgraph "MotherGoose Sync Process"
+        CeleryBeat[Celery Beat<br/>Every 5 minutes]
+        GitSync[Git Sync Task]
+        Parser[Fly Parser]
+        DBUpdate[Database Update]
+    end
+    
+    subgraph "Database Cache"
+        DB[(Database<br/>Parsed Configs)]
+    end
+    
+    subgraph "Runtime Operations"
+        Webhook[GitLab Webhook]
+        RunnerDeploy[Runner Deployment]
+    end
+    
+    NestRepo -->|1. Periodic Pull| CeleryBeat
+    NestRepo -->|2. Push Event| Webhook
+    
+    CeleryBeat --> GitSync
+    Webhook --> GitSync
+    
+    GitSync -->|3. Retrieve Deploy Key| Lockbox
+    GitSync -->|4. Clone/Pull| NestRepo
+    GitSync -->|5. Parse .fly files| Parser
+    Parser -->|6. Update Cache| DBUpdate
+    DBUpdate --> DB
+    
+    DB -->|7. Read Config| RunnerDeploy
+    RunnerDeploy -->|8. Retrieve Secrets| Lockbox
+```
+
+#### Periodic Sync (Celery Beat)
+
+MotherGoose runs a scheduled Celery task every 5 minutes to sync Git → Database:
+
+```python
+@celery_beat.schedule(interval=timedelta(minutes=5))
+@celery.task
+async def sync_nest_config():
+    """
+    Periodically sync Nest Git repo to database cache
+    """
+    # 1. Retrieve deploy key from secret storage
+    deploy_key = await secret_manager.get_secret(
+        "yc-lockbox://deploy-keys/mothergoose-private"
+    )
+    nest_repo_url = await secret_manager.get_secret(
+        "yc-lockbox://nest/repo-url"
+    )
+    
+    # 2. Clone/Pull Nest repository
+    repo = git.Repo.clone_from(
+        nest_repo_url,
+        '/tmp/nest',
+        env={'GIT_SSH_COMMAND': f'ssh -i {deploy_key}'}
+    )
+    
+    # 3. Parse all .fly files
+    eggs = parse_eggs_directory('/tmp/nest/Eggs')
+    jobs = parse_jobs_directory('/tmp/nest/Jobs')
+    uf_config = parse_uf_config('/tmp/nest/UF/config.fly')
+    
+    # 4. Update database cache
+    for egg in eggs:
+        await db.upsert_egg_config(
+            name=egg.name,
+            config=egg,
+            git_commit=repo.head.commit.hexsha,
+            synced_at=datetime.now()
+        )
+    
+    # 5. Log sync event
+    await db.create_sync_history(
+        git_commit=repo.head.commit.hexsha,
+        changes_detected=detect_changes(eggs, jobs, uf_config),
+        status='success'
+    )
+```
+
+#### Event-Driven Sync (GitLab Webhook)
+
+When changes are pushed to Nest repository, GitLab webhook triggers immediate sync:
+
+```python
+@app.post("/webhooks/gitlab")
+async def handle_nest_webhook(webhook: GitLabWebhook):
+    """
+    Immediate sync on Git push to Nest repository
+    """
+    if webhook.project_id == NEST_PROJECT_ID and webhook.ref == "refs/heads/main":
+        # Trigger immediate sync (don't wait for periodic job)
+        await sync_nest_config.apply_async()
+        
+        logger.info(f"Nest config synced from commit {webhook.after}")
+```
+
+#### Deploy Key Management
+
+Three sets of SSH deploy keys are generated during `gosling init`:
+
+1. **MotherGoose Deploy Key** (Read-Only)
+   - Used for periodic Git sync
+   - Stored in: `yc-lockbox://deploy-keys/mothergoose-private`
+   - Added to GitLab with read-only access
+
+2. **UglyFox Deploy Key** (Read-Only)
+   - Used for reading UF/config.fly policies
+   - Stored in: `yc-lockbox://deploy-keys/uglyfox-private`
+   - Added to GitLab with read-only access
+
+3. **SelfJobs Deploy Key** (Read-Write)
+   - Used for self-management jobs that modify Nest repo
+   - Stored in: `yc-lockbox://deploy-keys/selfjobs-private`
+   - Added to GitLab with read-write access
+   - Used for: secret rotation, config updates, automated maintenance
+
+### Security Architecture
+
+#### Zero Secrets in Configuration
+
+**Critical Security Principle**: No secrets are ever stored in Git, configuration files, or database. All secrets are stored in cloud secret managers and referenced by URI.
+
+#### Secret Storage Structure
+
+```
+Yandex Cloud Lockbox (or AWS Secrets Manager)
+├── deploy-keys/
+│   ├── mothergoose-private      (SSH private key for Git access)
+│   ├── mothergoose-public       (SSH public key - add to GitLab)
+│   ├── uglyfox-private          (SSH private key for Git access)
+│   ├── uglyfox-public           (SSH public key - add to GitLab)
+│   ├── selfjobs-private         (SSH private key for Git access)
+│   └── selfjobs-public          (SSH public key - add to GitLab)
+├── nest/
+│   └── repo-url                 (git@gitlab.com:company/nest.git)
+├── webhooks/
+│   ├── my-app-secret            (Per-Egg webhook secret)
+│   ├── team-bucket-secret       (Per-EggsBucket webhook secret)
+│   ├── api-service-secret       (Per-Egg webhook secret)
+│   └── auth-service-secret      (Per-Egg webhook secret)
+├── gitlab-tokens/
+│   ├── my-app-runner-token      (GitLab runner registration token)
+│   ├── api-service-runner-token (GitLab runner registration token)
+│   └── auth-service-runner-token(GitLab runner registration token)
+└── api-keys/
+    └── my-app-key               (Application API keys)
+```
+
+#### Per-Egg Webhook Secrets
+
+Each Egg has its own webhook secret for security isolation:
+
+**Benefits**:
+- **Security Isolation**: Compromise of one Egg's webhook secret doesn't affect others
+- **Independent Rotation**: Rotate webhook secrets per-Egg without affecting others
+- **Audit Trail**: Track which Egg's webhook was accessed
+- **Granular Access**: Different teams can manage different Eggs' secrets
+- **Blast Radius Reduction**: Security incident limited to one Egg
+
+**Fly Configuration Example**:
+```hcl
+egg "my-app" {
+  type = "vm"
+  
+  gitlab {
+    project_id = 12345
+    token_secret = "yc-lockbox://gitlab-tokens/my-app-runner-token"
+    webhook_secret = "yc-lockbox://webhooks/my-app-secret"  # Unique per-Egg
+  }
+}
+```
+
+**Webhook Validation**:
+```python
+@app.post("/webhooks/gitlab")
+async def handle_webhook(request: Request, webhook: GitLabWebhook):
+    # 1. Get webhook signature
+    signature = request.headers.get("X-Gitlab-Token")
+    
+    # 2. Identify Egg by project_id
+    egg_config = await db.get_egg_by_project_id(webhook.project_id)
+    
+    # 3. Retrieve per-Egg webhook secret
+    webhook_secret_uri = egg_config.gitlab.webhook_secret
+    expected_secret = await secret_manager.get_secret(webhook_secret_uri)
+    
+    # 4. Validate signature
+    if signature != expected_secret:
+        raise HTTPException(401, "Invalid webhook signature")
+```
+
+#### IAM Permissions Model
+
+**MotherGoose Service Account**:
+```yaml
+permissions:
+  - lockbox.payloadViewer  # Read deploy-keys/mothergoose-private
+  - lockbox.payloadViewer  # Read nest/repo-url
+  - lockbox.payloadViewer  # Read webhooks/*
+  - lockbox.payloadViewer  # Read gitlab-tokens/*
+```
+
+**UglyFox Service Account**:
+```yaml
+permissions:
+  - lockbox.payloadViewer  # Read deploy-keys/uglyfox-private
+  - lockbox.payloadViewer  # Read nest/repo-url
+```
+
+**SelfJobs Service Account**:
+```yaml
+permissions:
+  - lockbox.payloadViewer  # Read deploy-keys/selfjobs-private
+  - lockbox.payloadViewer  # Read nest/repo-url
+  - lockbox.editor         # Write secrets (for rotation jobs)
+```
+
+#### Secret Rotation
+
+Self-management jobs can rotate secrets automatically:
+
+```hcl
+# Jobs/rotate-webhook-secrets.fly
+job "rotate-webhook-secrets" {
+  schedule = "0 0 1 * *"  # Monthly rotation
+  
+  script = <<-EOT
+    #!/bin/bash
+    for egg in $(gosling list eggs); do
+      # Generate new secret
+      new_secret=$(openssl rand -hex 32)
+      
+      # Update in secret storage
+      yc lockbox payload set \
+        --name webhooks \
+        --key "${egg}-secret" \
+        --text-value "$new_secret"
+      
+      # Update GitLab webhook
+      gitlab_project_id=$(gosling get egg $egg --field gitlab.project_id)
+      curl -X PUT "https://gitlab.com/api/v4/projects/${gitlab_project_id}/hooks/${webhook_id}" \
+        -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+        -d "token=$new_secret"
+    done
+  EOT
+}
+```
+
 ### High-Level Architecture
 
 ```mermaid
 graph TB
-    subgraph "Nest Repository"
+    subgraph "Nest Git Repository (Source of Truth)"
         Eggs[Eggs/]
         Jobs[Jobs/]
         UF[UF/]
+    end
+    
+    subgraph "Secret Storage"
+        Lockbox[Yandex Cloud Lockbox /<br/>AWS Secrets Manager<br/><br/>- Deploy Keys<br/>- Webhook Secrets<br/>- Runner Tokens]
     end
     
     subgraph "Gosling CLI"
@@ -53,11 +354,11 @@ graph TB
         MG[MotherGoose<br/>FastAPI + Celery]
         UF_Server[UglyFox<br/>Celery Workers]
         MQ[Message Queue<br/>YMQ/SQS]
+        GitSync[Git Sync Task<br/>Every 5 min]
     end
     
     subgraph "Storage"
-        YDB[(YDB)]
-        DDB[(DynamoDB)]
+        YDB[(YDB / DynamoDB<br/><br/>Cached Configs<br/>Runtime State)]
         S3[S3 Buckets<br/>Tofu States<br/>Tofu Binaries]
     end
     
@@ -73,18 +374,18 @@ graph TB
         Webhooks[Webhooks]
     end
     
-    Eggs --> Parser
-    Jobs --> Parser
-    UF --> Parser
+    Eggs -.->|gosling init/add| Parser
+    Jobs -.->|gosling init/add| Parser
+    UF -.->|gosling init/add| Parser
     
     Parser --> YC_SDK
     Parser --> AWS_SDK
     Parser --> GL_SDK
     
-    YC_SDK --> YC_VM
-    YC_SDK --> YC_SC
-    AWS_SDK --> AWS_EC2
-    AWS_SDK --> AWS_Lambda
+    YC_SDK -.->|One-time bootstrap| YC_VM
+    YC_SDK -.->|One-time bootstrap| YC_SC
+    AWS_SDK -.->|One-time bootstrap| AWS_EC2
+    AWS_SDK -.->|One-time bootstrap| AWS_Lambda
     
     GL_SDK --> GL
     
@@ -98,12 +399,18 @@ graph TB
     MG --> MQ
     UF_Server --> MQ
     
-    MG --> YDB
-    MG --> DDB
+    GitSync -->|Periodic Pull| Eggs
+    GitSync -->|Periodic Pull| Jobs
+    GitSync -->|Periodic Pull| UF
+    GitSync -->|Retrieve Deploy Key| Lockbox
+    GitSync -->|Update Cache| YDB
+    
+    MG -->|Read Cached Config| YDB
+    MG -->|Retrieve Secrets| Lockbox
     MG --> S3
     
-    UF_Server --> YDB
-    UF_Server --> DDB
+    UF_Server -->|Read Cached Config| YDB
+    UF_Server -->|Retrieve Secrets| Lockbox
     
     MG --> YC_VM
     MG --> YC_SC
@@ -119,6 +426,12 @@ graph TB
     YC_SC -.-> Rift
     AWS_EC2 -.-> Rift
     AWS_Lambda -.-> Rift
+    
+    style Eggs fill:#e1f5e1
+    style Jobs fill:#e1f5e1
+    style UF fill:#e1f5e1
+    style Lockbox fill:#ffe1e1
+    style GitSync fill:#e1e5ff
 ```
 
 ### Component Interaction Flow
@@ -127,33 +440,63 @@ graph TB
 sequenceDiagram
     participant Dev as DevOps Engineer
     participant CLI as Gosling CLI
-    participant Nest as Nest Repo
+    participant Nest as Nest Git Repo
+    participant Secrets as Secret Storage
     participant GL as GitLab
     participant APIGW as API Gateway
     participant MG as MotherGoose
+    participant GitSync as Git Sync Task
     participant MQ as Message Queue
     participant Celery as Celery Worker
-    participant DB as Database
+    participant DB as Database (Cache)
     participant S3 as S3 Storage
     participant Runner as Runner (VM/Container)
     participant UF as UglyFox
     
-    Dev->>CLI: gosling init
+    Note over Dev,CLI: Bootstrap Phase (One-Time)
+    Dev->>CLI: gosling init --cloud yandex
+    CLI->>CLI: Generate SSH deploy keys
+    CLI->>Secrets: Store deploy keys
+    CLI->>Secrets: Store webhook secrets (per-Egg)
     CLI->>Nest: Create Eggs/, Jobs/, UF/
+    CLI->>Nest: git init & git remote add
+    CLI->>Dev: Display instructions for adding deploy keys to GitLab
     
-    Dev->>Nest: Add Egg config.fly
-    Dev->>CLI: gosling deploy
-    CLI->>CLI: Parse .fly files
-    CLI->>GL: Register webhooks (GitLab SDK)
-    CLI->>DB: Store Egg configs
-    CLI->>S3: Upload Tofu state
+    Dev->>GL: Add deploy keys (mothergoose, uglyfox, selfjobs)
     
+    Dev->>CLI: gosling deploy --cloud yandex
+    CLI->>CLI: Deploy MotherGoose, UglyFox, databases, queues
+    CLI->>GL: Configure webhooks with per-Egg secrets
+    CLI->>MG: Trigger initial Git sync
+    
+    Note over MG,DB: Periodic Git Sync (Every 5 minutes)
+    loop Every 5 minutes
+        GitSync->>Secrets: Retrieve deploy key
+        GitSync->>Nest: git clone/pull
+        GitSync->>GitSync: Parse .fly files
+        GitSync->>DB: Update cached configs
+        GitSync->>DB: Log sync history
+    end
+    
+    Note over Dev,Nest: Configuration Changes
+    Dev->>Nest: Add/modify Egg config.fly
+    Dev->>Nest: git commit & git push
+    Nest->>GL: Push event
+    GL->>APIGW: Webhook (push to Nest)
+    APIGW->>MG: Forward webhook
+    MG->>GitSync: Trigger immediate sync
+    GitSync->>Nest: git pull
+    GitSync->>DB: Update cached configs
+    
+    Note over GL,Runner: Job Execution Flow
     GL->>APIGW: Webhook (job queued)
     APIGW->>MG: Forward webhook
+    MG->>MG: Validate per-Egg webhook secret
     MG->>MQ: Queue process_webhook task
     MQ->>Celery: Execute task
     
-    Celery->>DB: Query Egg config
+    Celery->>DB: Query cached Egg config
+    Celery->>Secrets: Retrieve runner token
     Celery->>DB: Store deployment plan (binary)
     Celery->>S3: Read Tofu binary
     Celery->>Runner: Deploy with mounted Tofu
@@ -163,9 +506,13 @@ sequenceDiagram
     Runner->>S3: Mount Tofu binary from /mnt/tofu/{version}
     Runner->>GL: Register & execute job
     Runner->>GL: Report status
+    Runner->>DB: Send health metrics
     
+    Note over UF,Runner: Runner Lifecycle Management
     UF->>MQ: Scheduled health check task
-    UF->>DB: Query runner health
+    UF->>Secrets: Retrieve deploy key
+    UF->>Nest: git pull UF/config.fly
+    UF->>DB: Query runner health metrics
     UF->>UF: Evaluate pruning policies
     UF->>Runner: Terminate failed runners
     UF->>DB: Update runner state
@@ -312,15 +659,140 @@ This configuration supports Python 3.10, 3.11, 3.12, and 3.13 for comprehensive 
 
 **Commands**:
 ```go
-gosling init [--path PATH]              // Initialize Nest repository
-gosling add egg NAME [--type vm|serverless]  // Add Egg configuration
-gosling add job NAME                    // Add Job definition
-gosling validate                        // Validate .fly files
-gosling deploy [--dry-run]              // Deploy resources
-gosling rollback [--to VERSION]         // Rollback deployment
-gosling status                          // Show deployment status
-gosling runner [--runner-id ID] [--egg-name NAME]  // Run in runner mode (manages GitLab Runner Agent)
+gosling init [--path PATH] [--cloud PROVIDER] [--secret-backend URI]  // Initialize Nest repository with security setup
+gosling add egg NAME [--type vm|serverless] [--gitlab-project-id ID]  // Add Egg configuration with webhook secret
+gosling add job NAME                                                   // Add Job definition
+gosling validate                                                       // Validate .fly files
+gosling deploy [--dry-run] [--cloud PROVIDER] [--region REGION]       // Deploy infrastructure (one-time bootstrap)
+gosling rollback [--to VERSION]                                        // Rollback deployment
+gosling status [--egg NAME]                                            // Show deployment status
+gosling runner [--runner-id ID] [--egg-name NAME]                     // Run in runner mode (manages GitLab Runner Agent)
 ```
+
+**`gosling init` - Bootstrap with Security**:
+
+The `init` command sets up a complete GitOps environment with proper security:
+
+```bash
+gosling init --cloud yandex --secret-backend yc-lockbox
+```
+
+**What it does**:
+1. **Create Nest Repository Structure**:
+   - Creates `Eggs/`, `Jobs/`, `UF/` directories
+   - Creates `README.md` with documentation
+   - Creates `.gitignore` with security exclusions
+
+2. **Git Repository Validation**:
+   - Checks if directory is a Git repository
+   - If not, offers to run `git init`
+   - Validates remote origin is configured
+   - Ensures main/master branch exists
+
+3. **Generate SSH Deploy Keys**:
+   - Generates three SSH key pairs (Ed25519):
+     - `mothergoose` (read-only access to Nest)
+     - `uglyfox` (read-only access to Nest)
+     - `selfjobs` (read-write access to Nest)
+
+4. **Store Keys in Secret Manager**:
+   - Stores all private keys in secret storage
+   - Stores all public keys in secret storage
+   - Stores Nest repository URL in secret storage
+   - **NO secrets displayed to user**
+   - **NO secrets stored in config files**
+
+5. **Display Setup Instructions**:
+   ```
+   ✅ Nest repository initialized successfully!
+   ✅ Deploy keys generated and stored in Yandex Cloud Lockbox
+   
+   Next steps:
+   1. Add deploy keys to your GitLab repository:
+      - Go to: Settings > Repository > Deploy Keys
+      - Retrieve public keys from secret storage:
+        yc lockbox payload get --name deploy-keys --key mothergoose-public
+        yc lockbox payload get --name deploy-keys --key uglyfox-public
+        yc lockbox payload get --name deploy-keys --key selfjobs-public
+      - Add mothergoose and uglyfox with read-only access
+      - Add selfjobs with read-write access
+   
+   2. Commit and push Nest repository:
+      git add .
+      git commit -m "Initialize Nest repository"
+      git push origin main
+   
+   3. Add Egg configurations:
+      gosling add egg my-app --type vm --gitlab-project-id 12345
+   
+   4. Deploy infrastructure:
+      gosling deploy --cloud yandex --region ru-central1-a
+   ```
+
+**`gosling add egg` - Add Egg with Webhook Secret**:
+
+The `add egg` command creates an Egg configuration with per-Egg webhook secret:
+
+```bash
+gosling add egg my-app --type vm --gitlab-project-id 12345
+```
+
+**What it does**:
+1. **Generate Unique Webhook Secret**:
+   - Generates cryptographically secure random secret
+   - Stores in secret manager: `yc-lockbox://webhooks/my-app-secret`
+
+2. **Create config.fly**:
+   ```hcl
+   egg "my-app" {
+     type = "vm"
+     
+     gitlab {
+       project_id = 12345
+       token_secret = "yc-lockbox://gitlab-tokens/my-app-runner-token"
+       webhook_secret = "yc-lockbox://webhooks/my-app-secret"  # Per-Egg secret
+     }
+   }
+   ```
+
+3. **Display Webhook Configuration Instructions**:
+   ```
+   ✅ Egg 'my-app' created
+   
+   Configure GitLab webhook:
+     URL: https://api-gateway-url/webhooks/gitlab
+     Secret: Retrieve from secret storage:
+       yc lockbox payload get --name webhooks --key my-app-secret
+     
+     Events to trigger:
+       - Push events
+       - Job events
+       - Pipeline events
+   ```
+
+**`gosling deploy` - One-Time Infrastructure Bootstrap**:
+
+The `deploy` command is used **only once** to bootstrap the infrastructure:
+
+```bash
+gosling deploy --cloud yandex --region ru-central1-a
+```
+
+**First-time deployment**:
+1. Deploys MotherGoose backend (FastAPI + Celery)
+2. Deploys UglyFox backend (Celery workers)
+3. Creates databases (YDB/DynamoDB)
+4. Creates message queues (YMQ/SQS)
+5. Sets up API Gateway with OpenAPI spec
+6. Configures Celery Beat for periodic Git sync (every 5 minutes)
+7. Triggers initial Git sync from Nest repo to database
+8. Displays API Gateway URL for webhook configuration
+
+**Subsequent runs**:
+- Validates configuration
+- Shows current deployment status
+- Can update infrastructure if needed
+- **Does NOT re-deploy everything**
 
 **Runner Mode**:
 
@@ -407,6 +879,46 @@ type GitLabClient interface {
     DeleteWebhook(ctx context.Context, projectID int, hookID int) error
 }
 
+// MotherGooseClient communicates with MotherGoose API
+// CRITICAL: Gosling CLI MUST use this interface to query deployment status
+// Gosling CLI MUST NOT access the database directly
+type MotherGooseClient interface {
+    // GetEggStatus retrieves deployment status for an Egg
+    GetEggStatus(ctx context.Context, eggName string) (*EggStatus, error)
+    
+    // ListEggs lists all Egg configurations
+    ListEggs(ctx context.Context) ([]*EggConfig, error)
+    
+    // CreateOrUpdateEgg creates or updates an Egg configuration
+    CreateOrUpdateEgg(ctx context.Context, config *EggConfig) error
+    
+    // GetDeploymentPlan retrieves a specific deployment plan
+    GetDeploymentPlan(ctx context.Context, eggName, planID string) (*DeploymentPlan, error)
+    
+    // ListDeploymentPlans lists all deployment plans for an Egg
+    ListDeploymentPlans(ctx context.Context, eggName string) ([]*DeploymentPlan, error)
+}
+
+type EggStatus struct {
+    EggName           string
+    LatestPlan        *DeploymentPlan
+    DeploymentHistory []*DeploymentPlan
+    ActiveRunners     []*Runner
+    ConfigHash        string
+}
+
+type DeploymentPlan struct {
+    ID             string
+    EggName        string
+    PlanType       string
+    ConfigHash     string
+    CreatedAt      time.Time
+    AppliedAt      *time.Time
+    Status         string
+    RollbackPlanID string
+    Metadata       map[string]interface{}
+}
+
 // RunnerMode manages GitLab Runner Agent lifecycle (gosling runner command)
 type RunnerMode interface {
     Run(ctx context.Context, runnerID, eggName string) error
@@ -428,6 +940,94 @@ type RunnerMetrics struct {
     AgentVersion     string
     FailureCount     int
     LastJobTimestamp time.Time
+}
+```
+
+**MotherGoose Client Implementation**:
+
+```go
+package mothergoose
+
+import (
+    "context"
+    "encoding/json"
+    "fmt"
+    "net/http"
+    "time"
+)
+
+type Client struct {
+    baseURL    string
+    httpClient *http.Client
+    apiKey     string
+}
+
+func NewClient(baseURL, apiKey string) *Client {
+    return &Client{
+        baseURL: baseURL,
+        httpClient: &http.Client{
+            Timeout: 30 * time.Second,
+        },
+        apiKey: apiKey,
+    }
+}
+
+func (c *Client) GetEggStatus(ctx context.Context, eggName string) (*EggStatus, error) {
+    url := fmt.Sprintf("%s/eggs/%s/status", c.baseURL, eggName)
+    
+    req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+    if err != nil {
+        return nil, fmt.Errorf("failed to create request: %w", err)
+    }
+    
+    req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.apiKey))
+    req.Header.Set("Content-Type", "application/json")
+    
+    resp, err := c.httpClient.Do(req)
+    if err != nil {
+        return nil, fmt.Errorf("failed to execute request: %w", err)
+    }
+    defer resp.Body.Close()
+    
+    if resp.StatusCode != http.StatusOK {
+        return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+    }
+    
+    var status EggStatus
+    if err := json.NewDecoder(resp.Body).Decode(&status); err != nil {
+        return nil, fmt.Errorf("failed to decode response: %w", err)
+    }
+    
+    return &status, nil
+}
+
+func (c *Client) CreateOrUpdateEgg(ctx context.Context, config *EggConfig) error {
+    url := fmt.Sprintf("%s/eggs", c.baseURL)
+    
+    body, err := json.Marshal(config)
+    if err != nil {
+        return fmt.Errorf("failed to marshal config: %w", err)
+    }
+    
+    req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
+    if err != nil {
+        return fmt.Errorf("failed to create request: %w", err)
+    }
+    
+    req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.apiKey))
+    req.Header.Set("Content-Type", "application/json")
+    
+    resp, err := c.httpClient.Do(req)
+    if err != nil {
+        return fmt.Errorf("failed to execute request: %w", err)
+    }
+    defer resp.Body.Close()
+    
+    if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+        return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+    }
+    
+    return nil
 }
 ```
 
@@ -580,14 +1180,38 @@ uglyfox {
     check_interval = "5m"
   }
   
-  apex {
-    max_count = 10
-    min_count = 2
+  runners_condition "default" {
+    eggs_entities = ["Egg1", "EggsBucket2"]
+    
+    apex {
+      max_count = 10
+      min_count = 2
+      cpu_threshold = 80
+      memory_threshold = 70
+    }
+    
+    nadir {
+      max_count = 5
+      min_count = 0
+      idle_timeout = "30m"
+    }
   }
   
-  nadir {
-    max_count = 5
-    idle_timeout = "30m"
+  runners_condition "high-performance" {
+    eggs_entities = ["Egg3", "CriticalApp"]
+    
+    apex {
+      max_count = 20
+      min_count = 5
+      cpu_threshold = 90
+      memory_threshold = 80
+    }
+    
+    nadir {
+      max_count = 10
+      min_count = 2
+      idle_timeout = "15m"
+    }
   }
   
   policies {
@@ -673,8 +1297,79 @@ POST   /runners                  # Manually create runner (triggers Celery task)
 DELETE /runners/{id}             # Terminate runner (triggers Celery task)
 GET    /eggs                     # List Egg configurations
 GET    /eggs/{name}              # Get Egg details
+GET    /eggs/{name}/status       # Get deployment status for an Egg (used by Gosling CLI)
+GET    /eggs/{name}/plans        # List all deployment plans for an Egg
+GET    /eggs/{name}/plans/{id}   # Get specific deployment plan details
+POST   /eggs                     # Create or update Egg configuration (used by Gosling CLI during deploy)
 POST   /jobs/{name}/trigger      # Trigger self-management job (triggers Celery task)
 GET    /health                   # Health check
+```
+
+**Status Query Endpoints** (for Gosling CLI):
+
+The `GET /eggs/{name}/status` endpoint returns comprehensive deployment status:
+
+```python
+@app.get("/eggs/{name}/status")
+async def get_egg_status(name: str) -> EggStatusResponse:
+    """Get deployment status for an Egg
+    
+    Used by: Gosling CLI `status` command
+    
+    Returns:
+        - Latest deployment plan
+        - Current runner state
+        - Deployment history
+        - Configuration hash
+    """
+    # Query database for latest plan
+    latest_plan = await db.get_latest_plan(egg_name=name)
+    
+    # Query all plans for history
+    all_plans = await db.list_plans(egg_name=name)
+    
+    # Query active runners
+    runners = await db.get_runners_by_egg(egg_name=name)
+    
+    return EggStatusResponse(
+        egg_name=name,
+        latest_plan=latest_plan,
+        deployment_history=all_plans,
+        active_runners=runners,
+        config_hash=latest_plan.config_hash if latest_plan else None
+    )
+```
+
+**Response Models**:
+
+```python
+class DeploymentPlanResponse(BaseModel):
+    id: str
+    egg_name: str
+    plan_type: str
+    config_hash: str
+    created_at: datetime
+    applied_at: Optional[datetime]
+    status: str  # "pending", "applied", "rolled_back"
+    rollback_plan_id: Optional[str]
+    metadata: Dict[str, Any]
+
+class EggStatusResponse(BaseModel):
+    egg_name: str
+    latest_plan: Optional[DeploymentPlanResponse]
+    deployment_history: List[DeploymentPlanResponse]
+    active_runners: List[RunnerResponse]
+    config_hash: Optional[str]
+
+class RunnerResponse(BaseModel):
+    id: str
+    egg_name: str
+    type: str
+    state: str
+    cloud_provider: str
+    region: str
+    created_at: datetime
+    last_heartbeat: datetime
 ```
 
 **Celery Tasks**:
@@ -1445,7 +2140,7 @@ async with aioboto3.Session().resource('dynamodb') as dynamodb:
     )
 ```
 
-**Runners Table**:
+**Runners Table** (Runtime State):
 ```
 runners {
     id: string (PK)
@@ -1455,7 +2150,7 @@ runners {
     cloud_provider: string
     region: string
     gitlab_runner_id: int
-    gitlab_runner_token: string (encrypted)
+    deployed_from_commit: string       // Git commit hash that deployed this runner
     created_at: timestamp
     updated_at: timestamp
     last_heartbeat: timestamp
@@ -1464,26 +2159,49 @@ runners {
 }
 ```
 
-**Eggs Table**:
+**Egg Configs Table** (Cached from Git):
 ```
-eggs {
+egg_configs {
     name: string (PK)
-    config: json
+    config: jsonb                      // Parsed .fly configuration (contains secret URIs, NOT actual secrets)
+    git_commit: string                 // Git commit hash this config came from
+    git_repo_url_secret: string        // Secret URI: "yc-lockbox://nest/repo-url"
+    
+    // GitLab configuration (extracted from config for fast access)
+    gitlab_project_id: int (GSI)       // For webhook routing
+    gitlab_webhook_id: int             // GitLab webhook ID
+    gitlab_token_secret_uri: string    // Secret URI: "yc-lockbox://gitlab-tokens/my-app-runner-token"
+    gitlab_webhook_secret_uri: string  // Secret URI: "yc-lockbox://webhooks/my-app-secret" (per-Egg)
+    
+    synced_at: timestamp               // Last sync from Git
     created_at: timestamp
     updated_at: timestamp
-    version: int
 }
 ```
 
-**Jobs Table**:
+**Sync History Table** (Audit Trail):
+```
+sync_history {
+    id: string (PK)
+    git_commit: string (GSI)           // Git commit hash that was synced
+    synced_at: timestamp
+    changes_detected: jsonb            // What changed in this sync (added/modified/deleted Eggs)
+    status: string                     // "success", "failed"
+    error_message: string (nullable)   // Error details if sync failed
+}
+```
+
+**Jobs Table** (Cached from Git):
 ```
 jobs {
     name: string (PK)
-    schedule: string
+    config: jsonb                      // Parsed .fly configuration
+    schedule: string                   // Cron expression
+    git_commit: string                 // Git commit hash this job came from
     last_run: timestamp
     next_run: timestamp
     status: string
-    config: json
+    synced_at: timestamp
 }
 ```
 
@@ -1505,12 +2223,13 @@ audit_logs {
 deployment_plans {
     id: string (PK)
     egg_name: string (GSI)
-    plan_type: string  // "runner" or "rift"
-    plan_binary: binary  // OpenTofu plan output
+    plan_type: string                  // "runner" or "rift"
+    plan_binary: binary                // OpenTofu plan output
     config_hash: string
+    git_commit: string                 // Git commit hash used for this deployment
     created_at: timestamp
     applied_at: timestamp (nullable)
-    status: string  // "pending", "applied", "rolled_back"
+    status: string                     // "pending", "applied", "rolled_back"
     rollback_plan_id: string (nullable)
     metadata: json
 }
@@ -1519,12 +2238,12 @@ deployment_plans {
 **OpenTofu Versions Table**:
 ```
 tofu_versions {
-    version_id: string (PK)        // Generated hash from sha256_hash + version + source
-    version: string                // Semantic version (e.g., "1.6.0")
-    source: string                 // "github" or "other"
-    downloaded_at: string          // ISO timestamp
-    sha256_hash: string            // SHA256 checksum of binary
-    active: boolean                // Currently active version flag
+    version_id: string (PK)            // Generated hash from sha256_hash + version + source
+    version: string                    // Semantic version (e.g., "1.6.0")
+    source: string                     // "github" or "other"
+    downloaded_at: string              // ISO timestamp
+    sha256_hash: string                // SHA256 checksum of binary
+    active: boolean                    // Currently active version flag
 }
 ```
 
@@ -1534,19 +2253,26 @@ tofu_versions {
 ```
 runner_metrics {
     runner_id: string (PK)
-    timestamp: timestamp (SK)      // Sort key for time-series data
-    state: string                  // "active", "idle", "busy", "failed"
-    job_count: int                 // Total jobs executed
-    cpu_usage: float               // CPU utilization percentage
-    memory_usage: float            // Memory utilization percentage
-    disk_usage: float              // Disk utilization percentage
-    agent_version: string          // GitLab Runner Agent version
-    failure_count: int             // Cumulative failure count
-    last_job_timestamp: timestamp  // Last job execution time
+    timestamp: timestamp (SK)          // Sort key for time-series data
+    state: string                      // "active", "idle", "busy", "failed"
+    job_count: int                     // Total jobs executed
+    cpu_usage: float                   // CPU utilization percentage
+    memory_usage: float                // Memory utilization percentage
+    disk_usage: float                  // Disk utilization percentage
+    agent_version: string              // GitLab Runner Agent version
+    failure_count: int                 // Cumulative failure count
+    last_job_timestamp: timestamp      // Last job execution time
 }
 ```
 
 **Note**: Runner Gosling Service reports metrics every 30 seconds. UglyFox queries this table to evaluate pruning policies.
+
+**Key Database Design Principles**:
+1. **Configuration Cached from Git**: `egg_configs` and `jobs` tables cache parsed .fly files for fast runtime access
+2. **Git Commit Tracking**: All cached configs track which Git commit they came from
+3. **No Secrets in Database**: Only secret URI references stored, never actual secrets
+4. **Runtime State Separate**: `runners` and `runner_metrics` tables store runtime state only
+5. **Audit Trail**: `sync_history` tracks all Git sync operations for debugging and compliance
 
 
 

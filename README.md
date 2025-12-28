@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="img/logo.jpg" alt="Gosling Logo" width="200"/>
+</div>
+
 # Gosling CLI
 
 Go-based command-line tool for the Polar Gosling GitOps Runner Orchestration system.

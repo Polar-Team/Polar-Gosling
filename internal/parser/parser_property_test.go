@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"math/rand"
 	"reflect"
 	"strings"
 	"testing"
@@ -174,6 +175,11 @@ func createEggBlock(label string) Block {
 						Type:     NumberType,
 						Raw:      float64(20),
 					},
+					"type": {
+						Position: Position{File: "generated.fly", Line: 1, Column: 1},
+						Type:     StringType,
+						Raw:      []string{"vm", "serverless"}[rand.Intn(2)],
+					},
 				},
 				Blocks: []Block{},
 			},
@@ -220,6 +226,11 @@ func createEggBlock(label string) Block {
 						Position: Position{File: "generated.fly", Line: 1, Column: 1},
 						Type:     StringType,
 						Raw:      "vault://gitlab/runner-token",
+					},
+					"server_name": {
+						Position: Position{File: "generated.fly", Line: 1, Column: 1},
+						Type:     StringType,
+						Raw:      "example.com",
 					},
 				},
 				Blocks: []Block{},
@@ -580,6 +591,173 @@ variable "%s" {
 `, varName, varValue, varName)
 }
 
+// Feature: gitops-runner-orchestration, Property 4a: Fly Parser EggsBucket Support
+// Validates: Requirements 1.6, 1.7, 2.8
+func TestFlyParserEggsBucketSupport(t *testing.T) {
+	properties := gopter.NewProperties(nil)
+
+	properties.Property("eggsbucket with multiple repositories is correctly parsed and represented in AST",
+		prop.ForAll(
+			func(numRepos int) bool {
+				// Generate an eggsbucket configuration with the specified number of repositories
+				config := generateEggsBucketConfig(numRepos)
+
+				// Parse the configuration
+				parser := NewParser()
+				parsed, err := parser.Parse([]byte(config), "test.fly")
+				if err != nil {
+					t.Logf("Parse error: %v\nInput:\n%s", err, config)
+					return false
+				}
+
+				// Verify the structure
+				if len(parsed.Blocks) != 1 {
+					t.Logf("Expected 1 top-level block, got %d", len(parsed.Blocks))
+					return false
+				}
+
+				eggsBucket := parsed.Blocks[0]
+
+				// Verify it's an eggsbucket block
+				if eggsBucket.Type != "eggsbucket" {
+					t.Logf("Expected block type 'eggsbucket', got %q", eggsBucket.Type)
+					return false
+				}
+
+				// Verify it has a label
+				if len(eggsBucket.Labels) != 1 {
+					t.Logf("Expected 1 label, got %d", len(eggsBucket.Labels))
+					return false
+				}
+
+				// Verify shared configuration blocks exist
+				requiredBlocks := []string{"cloud", "resources", "runner", "repositories"}
+				for _, blockType := range requiredBlocks {
+					if _, ok := eggsBucket.GetBlock(blockType); !ok {
+						t.Logf("Missing required block: %s", blockType)
+						return false
+					}
+				}
+
+				// Verify the repositories block contains the correct number of repo blocks
+				repositoriesBlock, ok := eggsBucket.GetBlock("repositories")
+				if !ok {
+					t.Logf("Missing repositories block")
+					return false
+				}
+
+				repoBlocks := repositoriesBlock.GetBlocks("repo")
+				if len(repoBlocks) != numRepos {
+					t.Logf("Expected %d repo blocks, got %d", numRepos, len(repoBlocks))
+					return false
+				}
+
+				// Verify each repo block has the required structure
+				for i, repo := range repoBlocks {
+					// Each repo should have a label (the repo name)
+					if len(repo.Labels) != 1 {
+						t.Logf("Repo %d: expected 1 label, got %d", i, len(repo.Labels))
+						return false
+					}
+
+					// Each repo should have a gitlab block
+					gitlabBlock, ok := repo.GetBlock("gitlab")
+					if !ok {
+						t.Logf("Repo %d: missing gitlab block", i)
+						return false
+					}
+
+					// Verify gitlab block has required attributes
+					if _, ok := gitlabBlock.GetAttribute("project_id"); !ok {
+						t.Logf("Repo %d: missing project_id attribute", i)
+						return false
+					}
+
+					if _, ok := gitlabBlock.GetAttribute("token_secret"); !ok {
+						t.Logf("Repo %d: missing token_secret attribute", i)
+						return false
+					}
+				}
+
+				// Verify shared configuration is present
+				// Check type attribute
+				if typeVal, ok := eggsBucket.GetAttribute("type"); !ok {
+					t.Logf("Missing type attribute")
+					return false
+				} else {
+					typeStr, err := typeVal.AsString()
+					if err != nil {
+						t.Logf("Type is not a string: %v", err)
+						return false
+					}
+					if typeStr != "vm" && typeStr != "serverless" {
+						t.Logf("Invalid type value: %q", typeStr)
+						return false
+					}
+				}
+
+				return true
+			},
+			gen.IntRange(1, 5), // Test with 1 to 5 repositories
+		))
+
+	properties.TestingRun(t, gopter.ConsoleReporter(false))
+}
+
+// generateEggsBucketConfig creates an eggsbucket configuration with the specified number of repositories
+func generateEggsBucketConfig(numRepos int) string {
+	var sb strings.Builder
+
+	sb.WriteString(`eggsbucket "microservices-team" {
+  type = "vm"
+
+  cloud {
+    provider = "yandex"
+    region   = "ru-central1-a"
+  }
+
+  resources {
+    cpu    = 4
+    memory = 8192
+    disk   = 40
+  }
+
+  runner {
+    tags = ["docker", "linux", "microservices"]
+    concurrent = 10
+    idle_timeout = "15m"
+  }
+
+  repositories {
+`)
+
+	// Generate repo blocks
+	for i := 0; i < numRepos; i++ {
+		repoName := fmt.Sprintf("service-%d", i)
+		projectID := 12345 + i
+		sb.WriteString(fmt.Sprintf(`    repo %q {
+      gitlab {
+        project_id = %d
+        token_secret = "yc-lockbox://gitlab-tokens/%s-token"
+      }
+    }
+
+`, repoName, projectID, repoName))
+	}
+
+	sb.WriteString(`  }
+
+  environment {
+    DOCKER_DRIVER = "overlay2"
+    SHARED_CACHE  = "s3://team-cache-bucket"
+    TEAM_NAME     = "microservices"
+  }
+}
+`)
+
+	return sb.String()
+}
+
 // generateConfigWithTypeError creates a .fly configuration with a specific type error
 func generateConfigWithTypeError(errorType string) string {
 	switch errorType {
@@ -588,26 +766,27 @@ func generateConfigWithTypeError(errorType string) string {
 		return `
 egg "test-app" {
   type = "vm"
-  
+
   cloud {
     provider = "yandex"
     region   = "ru-central1-a"
   }
-  
+
   resources {
     cpu    = "not-a-number"
     memory = 4096
     disk   = 20
   }
-  
+
   runner {
     tags = ["docker"]
     concurrent = 3
   }
-  
+
   gitlab {
     project_id = 12345
     token_secret = "vault://gitlab/runner-token"
+		server_name = "example.com"
   }
 }
 `
@@ -617,26 +796,27 @@ egg "test-app" {
 		return `
 egg "test-app" {
   type = 123
-  
+
   cloud {
     provider = "yandex"
     region   = "ru-central1-a"
   }
-  
+
   resources {
     cpu    = 2
     memory = 4096
     disk   = 20
   }
-  
+
   runner {
     tags = ["docker"]
     concurrent = 3
   }
-  
+
   gitlab {
     project_id = 12345
     token_secret = "vault://gitlab/runner-token"
+		server_name = "example.com"
   }
 }
 `
@@ -646,26 +826,27 @@ egg "test-app" {
 		return `
 egg "test-app" {
   type = "vm"
-  
+
   cloud {
     provider = ["yandex", "aws"]
     region   = "ru-central1-a"
   }
-  
+
   resources {
     cpu    = 2
     memory = 4096
     disk   = 20
   }
-  
+
   runner {
     tags = ["docker"]
     concurrent = 3
   }
-  
+
   gitlab {
     project_id = 12345
     token_secret = "vault://gitlab/runner-token"
+		server_name = "example.com"
   }
 }
 `
@@ -675,26 +856,27 @@ egg "test-app" {
 		return `
 egg "test-app" {
   type = "vm"
-  
+
   cloud {
     provider = "yandex"
     region   = true
   }
-  
+
   resources {
     cpu    = 2
     memory = 4096
     disk   = 20
   }
-  
+
   runner {
     tags = ["docker"]
     concurrent = 3
   }
-  
+
   gitlab {
     project_id = 12345
     token_secret = "vault://gitlab/runner-token"
+		server_name = "example.com"
   }
 }
 `
@@ -704,26 +886,27 @@ egg "test-app" {
 		return `
 egg "test-app" {
   type = "invalid-type"
-  
+
   cloud {
     provider = "yandex"
     region   = "ru-central1-a"
   }
-  
+
   resources {
     cpu    = 2
     memory = 4096
     disk   = 20
   }
-  
+
   runner {
     tags = ["docker"]
     concurrent = 3
   }
-  
+
   gitlab {
     project_id = 12345
     token_secret = "vault://gitlab/runner-token"
+		server_name = "example.com"
   }
 }
 `
@@ -733,26 +916,27 @@ egg "test-app" {
 		return `
 egg "test-app" {
   type = "vm"
-  
+
   cloud {
     provider = "yandex"
     region   = "ru-central1-a"
   }
-  
+
   resources {
     cpu    = 2
     memory = 4096
     disk   = 20
   }
-  
+
   runner {
     tags = ["docker"]
     concurrent = 3
   }
-  
+
   gitlab {
     project_id = 12345
     token_secret = "vault://gitlab/runner-token"
+		server_name = "example.com"
   }
 }
 `

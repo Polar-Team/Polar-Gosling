@@ -211,13 +211,76 @@ func (v *Validator) validateUglyFoxBlock(block *Block) {
 
 	// Validate required nested blocks
 	v.validateRequiredBlock(block, "pruning")
-	v.validateRequiredBlock(block, "apex")
-	v.validateRequiredBlock(block, "nadir")
 
 	// Validate pruning block
 	if pruningBlock, ok := block.GetBlock("pruning"); ok {
 		v.validatePruningBlock(pruningBlock)
 	}
+
+	// Validate runners_condition blocks (at least one required)
+	runnersConditions := block.GetBlocks("runners_condition")
+	if len(runnersConditions) == 0 {
+		v.result.AddError(block.Position, "runners_condition",
+			"uglyfox block must have at least one 'runners_condition' block")
+	}
+
+	for _, rcBlock := range runnersConditions {
+		v.validateRunnersConditionBlock(&rcBlock)
+	}
+
+	// Validate optional policies block
+	if policiesBlock, ok := block.GetBlock("policies"); ok {
+		v.validatePoliciesBlock(policiesBlock)
+	}
+}
+
+// validateRunnersConditionBlock validates a runners_condition configuration block
+func (v *Validator) validateRunnersConditionBlock(block *Block) {
+	// runners_condition must have exactly one label (the condition name)
+	if len(block.Labels) != 1 {
+		v.result.AddError(block.Position, "labels",
+			"runners_condition block must have exactly one label (the condition name)")
+		return
+	}
+
+	// Validate condition name
+	conditionName := block.Labels[0]
+	if !isValidIdentifier(conditionName) {
+		v.result.AddError(block.Position, "name",
+			fmt.Sprintf("invalid condition name %q: must contain only alphanumeric characters, hyphens, and underscores", conditionName))
+	}
+
+	// Validate required attribute: eggs_entities (list of strings)
+	eggsEntitiesVal, ok := block.GetAttribute("eggs_entities")
+	if !ok {
+		v.result.AddError(block.Position, "eggs_entities",
+			"runners_condition block must have an 'eggs_entities' attribute")
+	} else {
+		eggsEntitiesList, err := eggsEntitiesVal.AsList()
+		if err != nil {
+			v.result.AddError(eggsEntitiesVal.Position, "eggs_entities",
+				"eggs_entities must be a list")
+		} else {
+			if len(eggsEntitiesList) == 0 {
+				v.result.AddError(eggsEntitiesVal.Position, "eggs_entities",
+					"eggs_entities must contain at least one egg name")
+			}
+			for i, entity := range eggsEntitiesList {
+				entityStr, err := entity.AsString()
+				if err != nil {
+					v.result.AddError(entity.Position, fmt.Sprintf("eggs_entities[%d]", i),
+						"egg entity must be a string")
+				} else if !isValidIdentifier(entityStr) {
+					v.result.AddError(entity.Position, fmt.Sprintf("eggs_entities[%d]", i),
+						fmt.Sprintf("invalid egg name %q: must contain only alphanumeric characters, hyphens, and underscores", entityStr))
+				}
+			}
+		}
+	}
+
+	// Validate required nested blocks
+	v.validateRequiredBlock(block, "apex")
+	v.validateRequiredBlock(block, "nadir")
 
 	// Validate apex block
 	if apexBlock, ok := block.GetBlock("apex"); ok {
@@ -227,11 +290,6 @@ func (v *Validator) validateUglyFoxBlock(block *Block) {
 	// Validate nadir block
 	if nadirBlock, ok := block.GetBlock("nadir"); ok {
 		v.validatePoolBlock(nadirBlock, "nadir")
-	}
-
-	// Validate optional policies block
-	if policiesBlock, ok := block.GetBlock("policies"); ok {
-		v.validatePoliciesBlock(policiesBlock)
 	}
 }
 
@@ -269,6 +327,17 @@ func (v *Validator) validateResourcesBlock(block *Block) {
 	v.validateRequiredNumberAttribute(block, "cpu", 1, 128)
 	v.validateRequiredNumberAttribute(block, "memory", 512, 524288) // 512 MB to 512 GB
 	v.validateRequiredNumberAttribute(block, "disk", 10, 10240)     // 10 GB to 10 TB
+
+	typeVal, ok := block.GetAttribute("type")
+	if ok {
+		typeStr, err := typeVal.AsString()
+		if err != nil {
+			v.result.AddError(typeVal.Position, "type", "type must be a string")
+		} else if typeStr != "vm" && typeStr != "serverless" {
+			v.result.AddError(typeVal.Position, "type",
+				fmt.Sprintf("type must be 'vm' or 'serverless', got %q", typeStr))
+		}
+	}
 }
 
 // validateRunnerBlock validates a runner configuration block
@@ -309,6 +378,18 @@ func (v *Validator) validateRunnerBlock(block *Block) {
 func (v *Validator) validateGitLabBlock(block *Block) {
 	// Validate required attribute: project_id
 	v.validateRequiredNumberAttribute(block, "project_id", 1, 999999999)
+
+	gitServer, ok := block.GetAttribute("server_name")
+	if !ok {
+		v.result.AddError(block.Position, "server_name",
+			"gitlab block must have a 'server_name' attribute")
+	} else {
+		_, err := gitServer.AsString()
+		if err != nil {
+			v.result.AddError(gitServer.Position, "server_name",
+				"server_name must be a string")
+		}
+	}
 
 	// Validate required attribute: token_secret
 	tokenSecretVal, ok := block.GetAttribute("token_secret")
@@ -415,6 +496,32 @@ func (v *Validator) validatePoolBlock(block *Block, poolType string) {
 		if minErr == nil && maxErr == nil && minNum > maxNum {
 			v.result.AddError(block.Position, "min_count",
 				fmt.Sprintf("min_count (%d) cannot be greater than max_count (%d)", minNum, maxNum))
+		}
+	}
+
+	// Validate optional cpu_threshold for apex pools
+	if poolType == "apex" {
+		if cpuThresholdVal, ok := block.GetAttribute("cpu_threshold"); ok {
+			cpuThreshold, err := cpuThresholdVal.AsNumber()
+			if err != nil {
+				v.result.AddError(cpuThresholdVal.Position, "cpu_threshold",
+					"cpu_threshold must be a number")
+			} else if cpuThreshold < 0 || cpuThreshold > 100 {
+				v.result.AddError(cpuThresholdVal.Position, "cpu_threshold",
+					fmt.Sprintf("cpu_threshold must be between 0 and 100, got %v", cpuThreshold))
+			}
+		}
+
+		// Validate optional memory_threshold for apex pools
+		if memoryThresholdVal, ok := block.GetAttribute("memory_threshold"); ok {
+			memoryThreshold, err := memoryThresholdVal.AsNumber()
+			if err != nil {
+				v.result.AddError(memoryThresholdVal.Position, "memory_threshold",
+					"memory_threshold must be a number")
+			} else if memoryThreshold < 0 || memoryThreshold > 100 {
+				v.result.AddError(memoryThresholdVal.Position, "memory_threshold",
+					fmt.Sprintf("memory_threshold must be between 0 and 100, got %v", memoryThreshold))
+			}
 		}
 	}
 

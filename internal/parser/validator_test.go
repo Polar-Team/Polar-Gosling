@@ -8,27 +8,28 @@ func TestValidateEggConfig(t *testing.T) {
 	content := []byte(`
 egg "my-app" {
   type = "vm"
-  
+
   cloud {
     provider = "yandex"
     region   = "ru-central1-a"
   }
-  
+
   resources {
     cpu    = 2
     memory = 4096
     disk   = 20
   }
-  
+
   runner {
     tags = ["docker", "linux"]
     concurrent = 3
     idle_timeout = "10m"
   }
-  
+
   gitlab {
     project_id = 12345
     token_secret = "vault://gitlab/runner-token"
+		server_name = "example.com"
   }
 }
 `)
@@ -53,21 +54,22 @@ egg "my-app" {
     provider = "yandex"
     region   = "ru-central1-a"
   }
-  
+
   resources {
     cpu    = 2
     memory = 4096
     disk   = 20
   }
-  
+
   runner {
     tags = ["docker", "linux"]
     concurrent = 3
   }
-  
+
   gitlab {
     project_id = 12345
     token_secret = "vault://gitlab/runner-token"
+		server_name = "example.com"
   }
 }
 `)
@@ -101,26 +103,27 @@ func TestValidateEggConfigInvalidType(t *testing.T) {
 	content := []byte(`
 egg "my-app" {
   type = "invalid"
-  
+
   cloud {
     provider = "yandex"
     region   = "ru-central1-a"
   }
-  
+
   resources {
     cpu    = 2
     memory = 4096
     disk   = 20
   }
-  
+
   runner {
     tags = ["docker", "linux"]
     concurrent = 3
   }
-  
+
   gitlab {
     project_id = 12345
     token_secret = "vault://gitlab/runner-token"
+		server_name = "example.com"
   }
 }
 `)
@@ -142,26 +145,27 @@ func TestValidateEggConfigInvalidProvider(t *testing.T) {
 	content := []byte(`
 egg "my-app" {
   type = "vm"
-  
+
   cloud {
     provider = "invalid"
     region   = "ru-central1-a"
   }
-  
+
   resources {
     cpu    = 2
     memory = 4096
     disk   = 20
   }
-  
+
   runner {
     tags = ["docker", "linux"]
     concurrent = 3
   }
-  
+
   gitlab {
     project_id = 12345
     token_secret = "vault://gitlab/runner-token"
+		server_name = "example.com"
   }
 }
 `)
@@ -183,26 +187,27 @@ func TestValidateEggConfigResourceOutOfRange(t *testing.T) {
 	content := []byte(`
 egg "my-app" {
   type = "vm"
-  
+
   cloud {
     provider = "yandex"
     region   = "ru-central1-a"
   }
-  
+
   resources {
     cpu    = 200
     memory = 4096
     disk   = 20
   }
-  
+
   runner {
     tags = ["docker", "linux"]
     concurrent = 3
   }
-  
+
   gitlab {
     project_id = 12345
     token_secret = "vault://gitlab/runner-token"
+		server_name = "example.com"
   }
 }
 `)
@@ -224,12 +229,12 @@ func TestValidateJobConfig(t *testing.T) {
 	content := []byte(`
 job "rotate-secrets" {
   schedule = "0 2 * * *"
-  
+
   runner {
     type = "vm"
     tags = ["privileged"]
   }
-  
+
   script = "#!/bin/bash\necho 'test'"
 }
 `)
@@ -254,7 +259,7 @@ job "rotate-secrets" {
     type = "vm"
     tags = ["privileged"]
   }
-  
+
   script = "#!/bin/bash\necho 'test'"
 }
 `)
@@ -276,12 +281,12 @@ func TestValidateJobConfigInvalidCron(t *testing.T) {
 	content := []byte(`
 job "rotate-secrets" {
   schedule = "invalid cron"
-  
+
   runner {
     type = "vm"
     tags = ["privileged"]
   }
-  
+
   script = "#!/bin/bash\necho 'test'"
 }
 `)
@@ -307,18 +312,24 @@ uglyfox {
     max_age = "24h"
     check_interval = "5m"
   }
-  
-  apex {
-    max_count = 10
-    min_count = 2
+
+  runners_condition "default" {
+    eggs_entities = ["Egg1", "EggsBucket2"]
+
+    apex {
+      max_count = 10
+      min_count = 2
+      cpu_threshold = 80
+      memory_threshold = 70
+    }
+
+    nadir {
+      max_count = 5
+      min_count = 0
+      idle_timeout = "30m"
+    }
   }
-  
-  nadir {
-    max_count = 5
-    min_count = 0
-    idle_timeout = "30m"
-  }
-  
+
   policies {
     rule "terminate_old_failed" {
       condition = "failed_count >= 3 AND age > 1h"
@@ -349,16 +360,20 @@ uglyfox {
     max_age = "24h"
     check_interval = "5m"
   }
-  
-  apex {
-    max_count = 5
-    min_count = 10
-  }
-  
-  nadir {
-    max_count = 5
-    min_count = 0
-    idle_timeout = "30m"
+
+  runners_condition "default" {
+    eggs_entities = ["Egg1"]
+
+    apex {
+      max_count = 5
+      min_count = 10
+    }
+
+    nadir {
+      max_count = 5
+      min_count = 0
+      idle_timeout = "30m"
+    }
   }
 }
 `)
@@ -384,18 +399,22 @@ uglyfox {
     max_age = "24h"
     check_interval = "5m"
   }
-  
-  apex {
-    max_count = 10
-    min_count = 2
+
+  runners_condition "default" {
+    eggs_entities = ["Egg1"]
+
+    apex {
+      max_count = 10
+      min_count = 2
+    }
+
+    nadir {
+      max_count = 5
+      min_count = 0
+      idle_timeout = "30m"
+    }
   }
-  
-  nadir {
-    max_count = 5
-    min_count = 0
-    idle_timeout = "30m"
-  }
-  
+
   policies {
     rule "test_rule" {
       condition = "failed_count >= 3"
@@ -422,26 +441,27 @@ func TestValidateInvalidEggName(t *testing.T) {
 	content := []byte(`
 egg "123-invalid" {
   type = "vm"
-  
+
   cloud {
     provider = "yandex"
     region   = "ru-central1-a"
   }
-  
+
   resources {
     cpu    = 2
     memory = 4096
     disk   = 20
   }
-  
+
   runner {
     tags = ["docker", "linux"]
     concurrent = 3
   }
-  
+
   gitlab {
     project_id = 12345
     token_secret = "vault://gitlab/runner-token"
+		server_name = "example.com"
   }
 }
 `)

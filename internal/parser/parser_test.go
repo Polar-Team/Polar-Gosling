@@ -8,29 +8,31 @@ func TestParseEggConfig(t *testing.T) {
 	content := []byte(`
 egg "my-app" {
   type = "vm"
-  
+
   cloud {
     provider = "yandex"
     region   = "ru-central1-a"
   }
-  
+
   resources {
     cpu    = 2
     memory = 4096
     disk   = 20
+	type = vm
   }
-  
+
   runner {
     tags = ["docker", "linux"]
     concurrent = 3
     idle_timeout = "10m"
   }
-  
+
   gitlab {
     project_id = 12345
+  	server_name = "https://exmple.com"
     token_secret = "vault://gitlab/runner-token"
   }
-  
+
   environment {
     DOCKER_DRIVER = "overlay2"
     CUSTOM_VAR    = "value"
@@ -150,12 +152,12 @@ func TestParseJobConfig(t *testing.T) {
 	content := []byte(`
 job "rotate-secrets" {
   schedule = "0 2 * * *"
-  
+
   runner {
     type = "vm"
     tags = ["privileged"]
   }
-  
+
   script = <<-EOT
     #!/bin/bash
     # Rotate GitLab runner tokens
@@ -227,24 +229,47 @@ uglyfox {
     max_age = "24h"
     check_interval = "5m"
   }
-  
-  apex {
-    max_count = 10
-    min_count = 2
+
+  runners_condition "default" {
+    eggs_entities = ["Egg1", "EggsBucket2"]
+
+    apex {
+      max_count = 10
+      min_count = 2
+      cpu_threshold = 80
+      memory_threshold = 70
+    }
+
+    nadir {
+      max_count = 5
+      min_count = 0
+      idle_timeout = "30m"
+    }
   }
-  
-  nadir {
-    max_count = 5
-    min_count = 0
-    idle_timeout = "30m"
+
+  runners_condition "high-performance" {
+    eggs_entities = ["Egg3", "EggsBucket4"]
+
+    apex {
+      max_count = 20
+      min_count = 5
+      cpu_threshold = 90
+      memory_threshold = 80
+    }
+
+    nadir {
+      max_count = 10
+      min_count = 2
+      idle_timeout = "15m"
+    }
   }
-  
+
   policies {
     rule "terminate_old_failed" {
       condition = "failed_count >= 3 AND age > 1h"
       action    = "terminate"
     }
-    
+
     rule "demote_idle" {
       condition = "state == 'apex' AND idle_time > 30m"
       action    = "demote_to_nadir"
@@ -283,10 +308,31 @@ uglyfox {
 		t.Errorf("Expected failed_threshold 3, got %d", failedThreshold)
 	}
 
-	// Check apex block
-	apexBlock, ok := uglyFoxBlock.GetBlock("apex")
+	// Check runners_condition blocks
+	runnersConditions := uglyFoxBlock.GetBlocks("runners_condition")
+	if len(runnersConditions) != 2 {
+		t.Fatalf("Expected 2 runners_condition blocks, got %d", len(runnersConditions))
+	}
+
+	// Check first runners_condition block (default)
+	defaultCondition := runnersConditions[0]
+	if len(defaultCondition.Labels) != 1 || defaultCondition.Labels[0] != "default" {
+		t.Errorf("Expected label 'default', got %v", defaultCondition.Labels)
+	}
+
+	eggsEntitiesVal, ok := defaultCondition.GetAttribute("eggs_entities")
 	if !ok {
-		t.Fatal("Missing 'apex' block")
+		t.Fatal("Missing 'eggs_entities' attribute in runners_condition")
+	}
+	eggsEntitiesList, _ := eggsEntitiesVal.AsList()
+	if len(eggsEntitiesList) != 2 {
+		t.Errorf("Expected 2 eggs_entities, got %d", len(eggsEntitiesList))
+	}
+
+	// Check apex block within runners_condition
+	apexBlock, ok := defaultCondition.GetBlock("apex")
+	if !ok {
+		t.Fatal("Missing 'apex' block in runners_condition")
 	}
 
 	maxCountVal, ok := apexBlock.GetAttribute("max_count")
@@ -298,10 +344,19 @@ uglyfox {
 		t.Errorf("Expected max_count 10, got %d", maxCount)
 	}
 
-	// Check nadir block
-	nadirBlock, ok := uglyFoxBlock.GetBlock("nadir")
+	cpuThresholdVal, ok := apexBlock.GetAttribute("cpu_threshold")
 	if !ok {
-		t.Fatal("Missing 'nadir' block")
+		t.Fatal("Missing 'cpu_threshold' attribute in apex block")
+	}
+	cpuThreshold, _ := cpuThresholdVal.AsInt()
+	if cpuThreshold != 80 {
+		t.Errorf("Expected cpu_threshold 80, got %d", cpuThreshold)
+	}
+
+	// Check nadir block within runners_condition
+	nadirBlock, ok := defaultCondition.GetBlock("nadir")
+	if !ok {
+		t.Fatal("Missing 'nadir' block in runners_condition")
 	}
 
 	idleTimeoutVal, ok := nadirBlock.GetAttribute("idle_timeout")
@@ -311,6 +366,26 @@ uglyfox {
 	idleTimeout, _ := idleTimeoutVal.AsString()
 	if idleTimeout != "30m" {
 		t.Errorf("Expected idle_timeout '30m', got %q", idleTimeout)
+	}
+
+	// Check second runners_condition block (high-performance)
+	hpCondition := runnersConditions[1]
+	if len(hpCondition.Labels) != 1 || hpCondition.Labels[0] != "high-performance" {
+		t.Errorf("Expected label 'high-performance', got %v", hpCondition.Labels)
+	}
+
+	hpApexBlock, ok := hpCondition.GetBlock("apex")
+	if !ok {
+		t.Fatal("Missing 'apex' block in high-performance runners_condition")
+	}
+
+	hpMaxCountVal, ok := hpApexBlock.GetAttribute("max_count")
+	if !ok {
+		t.Fatal("Missing 'max_count' attribute in high-performance apex block")
+	}
+	hpMaxCount, _ := hpMaxCountVal.AsInt()
+	if hpMaxCount != 20 {
+		t.Errorf("Expected max_count 20, got %d", hpMaxCount)
 	}
 
 	// Check policies block

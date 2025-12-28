@@ -99,15 +99,14 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - **Validates: Requirements 10.8**
 
 - [x] 5.4 Write property test for deployment rollback
-
   - **Property 25: Deployment Rollback**
   - **Validates: Requirements 10.9**
 
-- [ ] 6. Checkpoint - Gosling CLI Core Functionality
-  - Ensure all Gosling CLI tests pass
-  - Verify .fly parsing and validation works
-  - Test deployment and rollback commands
-  - Ask the user if questions arise
+- [x] 6. Checkpoint - Gosling CLI Core Functionality
+  - All Gosling CLI tests pass
+  - .fly parsing and validation works
+  - Deployment and rollback commands implemented
+  - MotherGoose API client ready for integration
 
 - [ ] 7. MotherGoose Backend - FastAPI Application Setup
   - Set up FastAPI application structure in mothergoose/src/app/main.py

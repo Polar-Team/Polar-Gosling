@@ -7,7 +7,7 @@ The Polar Gosling GitOps Runner Orchestration system is a comprehensive platform
 ## Glossary
 
 - **Nest**: The main GitOps repository that configures and manages runners for downstream repositories
-- **Egg**: A single managed repository configured by the Nest
+- **Egg**: A single managed repository or GitLab group configured by the Nest
 - **EggsBucket**: A group of multiple managed repositories configured together with shared runner configuration
 - **MotherGoose**: The primary backend server that handles job orchestration, webhook processing, and runner deployment
 - **UglyFox**: The secondary backend server responsible for pruning failed runners and managing runner lifecycle states
@@ -22,6 +22,9 @@ The Polar Gosling GitOps Runner Orchestration system is a comprehensive platform
 - **Secret_URI**: A URI scheme for referencing secrets stored in cloud secret management services (yc-lockbox://, aws-sm://, vault://)
 - **Yandex_Cloud_Lockbox**: Yandex Cloud's secret management service for storing and retrieving sensitive data
 - **AWS_Secrets_Manager**: AWS's secret management service for storing and retrieving sensitive data
+- **GitLab_Server**: The FQDN of a GitLab instance (e.g., gitlab.com, gitlab.company.com)
+- **Project_Level_Runner**: A runner registered to a specific GitLab project
+- **Group_Level_Runner**: A runner registered to a GitLab group, available to all projects in that group
 
 ## Requirements
 
@@ -192,6 +195,13 @@ The Polar Gosling GitOps Runner Orchestration system is a comprehensive platform
 5. THE Runner SHALL execute GitLab CI/CD jobs according to .gitlab-ci.yml
 6. THE Runner SHALL report job status and logs back to GitLab
 7. THE System SHALL support GitLab runner tags for job routing
+8. THE System SHALL support multiple GitLab instances (GitLab.com, self-hosted, GitLab Dedicated)
+9. THE Egg_Config SHALL specify GitLab server FQDN for API communication
+10. THE System SHALL support both project-level and group-level runner registration
+11. WHEN an Egg specifies a group_id, THE System SHALL discover all projects in that group
+12. WHEN an Egg specifies a group_id, THE System SHALL configure webhooks for all projects in the group
+13. THE System SHALL register group-level runners that are available to all projects in the group
+14. THE Gosling_CLI SHALL require API token with appropriate permissions for group-level operations
 
 ### Requirement 12: Configuration Management for Eggs
 

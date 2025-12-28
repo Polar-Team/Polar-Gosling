@@ -235,19 +235,48 @@ Each Egg has its own webhook secret for security isolation:
 - **Granular Access**: Different teams can manage different Eggs' secrets
 - **Blast Radius Reduction**: Security incident limited to one Egg
 
-**Fly Configuration Example**:
+**Fly Configuration Example (Project-Level)**:
 ```hcl
 egg "my-app" {
   type = "vm"
   
   gitlab {
-    project_id = 12345
-    token_secret = "yc-lockbox://gitlab-tokens/my-app-runner-token"
-    webhook_secret = "yc-lockbox://webhooks/my-app-secret"  # Unique per-Egg
+    server = "gitlab.com"  # GitLab server FQDN
+    project_id = 12345     # Single project
   }
 }
 ```
 
+**Fly Configuration Example (Group-Level)**:
+```hcl
+egg "microservices-team" {
+  type = "vm"
+  
+  gitlab {
+    server = "gitlab.company.com"  # Self-hosted GitLab FQDN
+    group_id = 789                  # GitLab group (mutually exclusive with project_id)
+  }
+  
+  runner {
+    tags = ["docker", "linux", "microservices"]
+    concurrent = 10  # Shared across all group projects
+  }
+}
+```
+
+**Secret Management (Automatic)**:
+
+The system automatically manages secrets based on egg name and GitLab server:
+- **API Token**: `yc-lockbox://gitlab/{server}/{egg-name}/api-token`
+- **Runner Token**: `yc-lockbox://gitlab/{server}/{egg-name}/runner-token`
+- **Webhook Secret**: `yc-lockbox://gitlab/{server}/{egg-name}/webhook-secret`
+
+Example for egg "my-app" on "gitlab.com":
+- API Token: `yc-lockbox://gitlab/gitlab.com/my-app/api-token`
+- Runner Token: `yc-lockbox://gitlab/gitlab.com/my-app/runner-token`
+- Webhook Secret: `yc-lockbox://gitlab/gitlab.com/my-app/webhook-secret`
+
+**Webhook Validation**:
 **Webhook Validation**:
 ```python
 @app.post("/webhooks/gitlab")
@@ -255,11 +284,17 @@ async def handle_webhook(request: Request, webhook: GitLabWebhook):
     # 1. Get webhook signature
     signature = request.headers.get("X-Gitlab-Token")
     
-    # 2. Identify Egg by project_id
-    egg_config = await db.get_egg_by_project_id(webhook.project_id)
+    # 2. Identify Egg by project_id or group_id
+    if webhook.project_id:
+        egg_config = await db.get_egg_by_project_id(webhook.project_id)
+    elif webhook.group_id:
+        egg_config = await db.get_egg_by_group_id(webhook.group_id)
+    else:
+        raise HTTPException(400, "Missing project_id or group_id")
     
-    # 3. Retrieve per-Egg webhook secret
-    webhook_secret_uri = egg_config.gitlab.webhook_secret
+    # 3. Build webhook secret URI automatically
+    # Format: yc-lockbox://gitlab/{server}/{egg-name}/webhook-secret
+    webhook_secret_uri = f"yc-lockbox://gitlab/{egg_config.gitlab.server}/{egg_config.name}/webhook-secret"
     expected_secret = await secret_manager.get_secret(webhook_secret_uri)
     
     # 4. Validate signature
@@ -274,8 +309,7 @@ async def handle_webhook(request: Request, webhook: GitLabWebhook):
 permissions:
   - lockbox.payloadViewer  # Read deploy-keys/mothergoose-private
   - lockbox.payloadViewer  # Read nest/repo-url
-  - lockbox.payloadViewer  # Read webhooks/*
-  - lockbox.payloadViewer  # Read gitlab-tokens/*
+  - lockbox.payloadViewer  # Read gitlab/*  (all GitLab secrets)
 ```
 
 **UglyFox Service Account**:
@@ -1035,7 +1069,7 @@ func (c *Client) CreateOrUpdateEgg(ctx context.Context, config *EggConfig) error
 
 **Syntax**: HCL-like with stronger typing
 
-**Example Egg Configuration**:
+**Example Egg Configuration (Project-Level)**:
 ```hcl
 egg "my-app" {
   type = "vm"  // or "serverless"
@@ -1058,13 +1092,47 @@ egg "my-app" {
   }
   
   gitlab {
-    project_id = 12345
-    token_secret = "yc-lockbox://gitlab-tokens/my-app-runner-token"
+    server = "gitlab.com"  // GitLab server FQDN (required)
+    project_id = 12345     // Single project
   }
   
   environment {
     DOCKER_DRIVER = "overlay2"
     CUSTOM_VAR    = "value"
+  }
+}
+```
+
+**Example Egg Configuration (Group-Level)**:
+```hcl
+egg "platform-team" {
+  type = "vm"
+  
+  cloud {
+    provider = "yandex"
+    region   = "ru-central1-a"
+  }
+  
+  resources {
+    cpu    = 4
+    memory = 8192
+    disk   = 40
+  }
+  
+  runner {
+    tags = ["docker", "linux", "platform"]
+    concurrent = 10  // Shared across all group projects
+    idle_timeout = "15m"
+  }
+  
+  gitlab {
+    server = "gitlab.company.com"  // Self-hosted GitLab FQDN
+    group_id = 789                  // GitLab group (mutually exclusive with project_id)
+  }
+  
+  environment {
+    DOCKER_DRIVER = "overlay2"
+    SHARED_CACHE  = "s3://platform-cache-bucket"
   }
 }
 ```
@@ -1094,22 +1162,22 @@ eggsbucket "microservices-team" {
   repositories {
     repo "api-service" {
       gitlab {
-        project_id = 12345
-        token_secret = "yc-lockbox://gitlab-tokens/api-service-token"
+        server = "gitlab.com"  // GitLab server FQDN
+        project_id = 12345     // Single project
       }
     }
     
-    repo "auth-service" {
+    repo "frontend-team" {
       gitlab {
-        project_id = 12346
-        token_secret = "yc-lockbox://gitlab-tokens/auth-service-token"
+        server = "gitlab.com"
+        group_id = 789         // Entire group (all projects auto-discovered)
       }
     }
     
     repo "notification-service" {
       gitlab {
+        server = "gitlab.internal.com"  // Different GitLab instance
         project_id = 12347
-        token_secret = "yc-lockbox://gitlab-tokens/notification-service-token"
       }
     }
   }
@@ -1121,6 +1189,166 @@ eggsbucket "microservices-team" {
   }
 }
 ```
+
+**Note**: Each repository in an EggsBucket can specify either `project_id` (single project) OR `group_id` (entire group), allowing you to mix individual projects and entire groups in the same EggsBucket.
+
+**GitLab Group-Level Runner Support**:
+
+The system supports registering runners at the GitLab group level, making them available to all projects within that group. This is useful for teams that want to share runner infrastructure across multiple repositories.
+
+**How Group-Level Runners Work**:
+
+1. **Group Discovery**: When `group_id` is specified, Gosling CLI uses the GitLab API to discover all projects in that group
+2. **Runner Registration**: A single group-level runner is registered with the GitLab group
+3. **Webhook Configuration**: Webhooks are automatically configured for all projects in the group
+4. **Shared Resources**: All projects in the group share the same runner pool and configuration
+
+**Group-Level vs Project-Level**:
+
+| Aspect | Project-Level | Group-Level |
+|--------|--------------|-------------|
+| **Configuration** | `project_id` in gitlab block | `group_id` in gitlab block |
+| **Runner Scope** | Single project | All projects in group |
+| **Webhook Setup** | Manual per project | Automatic for all group projects |
+| **API Token** | Project access | Group access (requires `api` scope) |
+| **Use Case** | Single repository | Team with multiple repositories |
+
+**API Token Permissions for Group-Level**:
+
+The `api_token_secret` for group-level operations requires:
+- `api` scope (full API access) OR
+- `read_api` + `write_repository` + `manage_runners` scopes
+
+**Deployment Flow for Group-Level Runners**:
+
+```go
+// 1. Initialize GitLab client with server FQDN
+serverURL := fmt.Sprintf("https://%s", eggConfig.GitLab.Server)
+gitlabClient, _ := gitlab.NewClient(apiToken, gitlab.WithBaseURL(serverURL))
+
+// 2. Fetch all projects in the group
+projects, _, _ := gitlabClient.Groups.ListGroupProjects(groupID, &gitlab.ListGroupProjectsOptions{
+    PerPage: 100,
+})
+
+// 3. Register group-level runner (once)
+runner, _, _ := gitlabClient.Runners.RegisterNewRunner(&gitlab.RegisterNewRunnerOptions{
+    Token:       runnerToken,
+    Description: fmt.Sprintf("Gosling Group Runner - %s", eggName),
+    RunnerType:  "group_type",
+    GroupID:     groupID,
+    TagList:     eggConfig.Runner.Tags,
+})
+
+// 4. Configure webhooks for each project in the group
+for _, project := range projects {
+    gitlabClient.Projects.AddProjectHook(project.ID, &gitlab.AddProjectHookOptions{
+        URL:          mothergooseWebhookURL,
+        Token:        webhookSecret,
+        PushEvents:   true,
+        JobEvents:    true,
+        PipelineEvents: true,
+    })
+}
+```
+
+**EggsBucket vs Group-Level Egg: Key Differences**
+
+The system supports two ways to manage multiple repositories with shared runner configuration:
+
+1. **EggsBucket**: Manually group specific repositories or groups
+   - Explicitly list each repository in the configuration
+   - Each repository can be a `project_id` (single project) OR `group_id` (entire group)
+   - Can mix repositories from different GitLab groups or instances
+   - Can combine individual projects with entire groups
+   - Requires manual updates when adding/removing repositories
+   - Use when you need fine-grained control over which repositories share runners
+
+2. **Group-Level Egg**: Automatically manage entire GitLab group
+   - Specify only the `group_id`, system discovers all projects automatically
+   - All repositories must be in the same GitLab group
+   - Automatically includes new repositories added to the group
+   - Use when managing an entire team's infrastructure as one unit
+
+**Comparison Table**:
+
+| Aspect | EggsBucket | Group-Level Egg |
+|--------|-----------|-----------------|
+| **Configuration** | `eggsbucket` block with `repositories` list | `egg` block with `group_id` |
+| **Repository Discovery** | Manual (explicit list) | Automatic (GitLab API) |
+| **Supports project_id** | Yes (per repo) | No |
+| **Supports group_id** | Yes (per repo) | Yes |
+| **Mix projects & groups** | Yes | No |
+| **GitLab Scope** | Can span multiple groups/instances | Single GitLab group only |
+| **Maintenance** | Update config when repos change | Automatic when group changes |
+| **Flexibility** | High (cherry-pick repos/groups) | Low (all or nothing) |
+| **Use Case** | Curated project/group selection | Entire team/org group |
+
+**Example: EggsBucket (Manual Grouping with Mixed project_id and group_id)**
+```hcl
+eggsbucket "selected-microservices" {
+  type = "vm"
+  
+  runner {
+    tags = ["docker", "microservices"]
+    concurrent = 10
+  }
+  
+  repositories {
+    repo "api-service" {
+      gitlab {
+        server = "gitlab.com"
+        project_id = 12345  # Single project
+      }
+    }
+    
+    repo "frontend-team" {
+      gitlab {
+        server = "gitlab.company.com"  # Different GitLab instance!
+        group_id = 67890                # Entire group (auto-discovered)
+      }
+    }
+    
+    repo "payment-service" {
+      gitlab {
+        server = "gitlab.com"
+        project_id = 11111  # Another single project
+      }
+    }
+  }
+}
+```
+
+**Example: Group-Level Egg (Automatic Discovery)**
+```hcl
+egg "platform-team" {
+  type = "vm"
+  
+  gitlab {
+    server = "gitlab.company.com"
+    group_id = 789  # All projects in this group automatically included
+  }
+  
+  runner {
+    tags = ["docker", "platform"]
+    concurrent = 10
+  }
+}
+```
+
+**When to use EggsBucket**:
+- Grouping specific repositories OR entire groups from different GitLab groups
+- Mixing repositories from different GitLab instances
+- Combining individual projects with entire groups
+- Need fine-grained control over repository/group selection
+- Want to cherry-pick which projects and groups share runners
+
+**When to use Group-Level Egg**:
+- All repositories are in a single GitLab group
+- Want automatic discovery of new repositories
+- Managing entire team's infrastructure as one unit
+- Minimal configuration maintenance desired
+- Don't need to mix with other projects/groups
 
 **Secret URI Schemes**:
 

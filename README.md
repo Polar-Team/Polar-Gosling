@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="img/logo.jpg" alt="Gosling Logo" width="1200"/>
+  <img src="img/logo.png" alt="Gosling Logo"/>
 </div>
 
 # Gosling CLI

@@ -108,7 +108,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Deployment and rollback commands implemented
   - MotherGoose API client ready for integration
 
-- [ ] 7. MotherGoose Backend - FastAPI Application Setup
+- [x] 7. MotherGoose Backend - FastAPI Application Setup
   - Set up FastAPI application structure in mothergoose/src/app/main.py
   - Create API router structure in mothergoose/src/app/routers/
   - Implement health check endpoint (GET /health)
@@ -116,7 +116,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Set up OpenAPI documentation
   - _Requirements: 4.7_
 
-- [ ] 8. MotherGoose Backend - API Endpoints for Gosling CLI
+- [x] 8. MotherGoose Backend - API Endpoints for Gosling CLI
   - Implement GET /eggs/{name}/status endpoint (returns EggStatusResponse)
   - Implement GET /eggs/{name}/plans endpoint (lists deployment plans)
   - Implement GET /eggs/{name}/plans/{id} endpoint (gets specific plan)
@@ -125,7 +125,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Create Pydantic models for request/response schemas
   - _Requirements: 10.6, 10.7_
 
-- [ ] 9. MotherGoose Backend - Database Layer
+- [x] 9. MotherGoose Backend - Database Layer
   - Implement async database operations for runners table (YDB/DynamoDB)
   - Implement async database operations for egg_configs table
   - Implement async database operations for sync_history table
@@ -138,15 +138,18 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Implement connection pooling for YDB and DynamoDB
   - _Requirements: 4.6, 14.1, 14.2, 14.3, 14.4, 14.5, 14.6, 14.7_
 
-- [ ]* 9.1 Write property test for runner state persistence
+- [x] 9.1 Write property test for runner state persistence
+
   - **Property 11: Runner State Persistence**
   - **Validates: Requirements 4.6, 14.1**
 
-- [ ]* 9.2 Write property test for database state recovery
+- [x] 9.2 Write property test for database state recovery
+
   - **Property 31: Database State Recovery**
   - **Validates: Requirements 14.6**
 
-- [ ]* 9.3 Write property test for database transaction atomicity
+- [x] 9.3 Write property test for database transaction atomicity
+
   - **Property 32: Database Transaction Atomicity**
   - **Validates: Requirements 14.7**
 

@@ -294,3 +294,38 @@ The Polar Gosling GitOps Runner Orchestration system is a comprehensive platform
 8. THE System SHALL enforce secret access policies based on IAM roles and service accounts
 9. WHEN parsing .fly files, THE System SHALL validate secret URI syntax before deployment
 10. THE System SHALL support secret versioning to enable rollback of secret changes
+
+### Requirement 18: Development Workflow for Backend Servers
+
+**User Story:** As a developer working on backend servers (MotherGoose, UglyFox), I want a standardized development workflow using Git worktrees, so that new features are isolated from production code until they are fully tested and approved.
+
+#### Acceptance Criteria
+
+1. THE Polar-Gosling-Backend-Servers_Repository (MotherGoose) SHALL use Git worktrees for feature development
+2. ALL new feature development SHALL be performed in the "dev-new-features" worktree directory ONLY
+3. THE main worktree SHALL remain untouched during feature development
+4. WHEN implementing new features, developers SHALL work exclusively in "dev-new-features" directory
+5. THE "dev-new-features" worktree SHALL contain a complete copy of the backend server codebase
+6. ALL tests for new features SHALL be executed within the "dev-new-features" worktree
+7. WHEN a feature is complete and tested, THE changes SHALL be committed in the "dev-new-features" worktree
+8. ONLY after feature approval, THE changes SHALL be merged into the main worktree
+9. THE development workflow SHALL prevent accidental modifications to production code in the main worktree
+10. ALL CI/CD agents and automation tools SHALL respect the worktree isolation and work only in "dev-new-features" when developing new features
+
+### Requirement 19: Backend Server Implementation Validation
+
+**User Story:** As a developer working on backend servers (MotherGoose, UglyFox), I want automated validation of all code changes, so that I can ensure code quality, formatting, and correctness before committing changes.
+
+#### Acceptance Criteria
+
+1. ALL implementations in the "dev-new-features" worktree SHALL pass the full tox test suite before being considered complete
+2. THE validation command `make mg-tox-all` SHALL be executed from the "dev-new-features" root directory
+3. WHEN `make mg-tox-all` succeeds, THE implementation SHALL be considered successful
+4. WHEN `make mg-tox-all` fails, THE developer SHALL fix all issues before proceeding
+5. THE tox test suite SHALL include unit tests on Python 3.10, 3.11, 3.12, and 3.13
+6. THE tox test suite SHALL include code formatting checks (black, isort)
+7. THE tox test suite SHALL include style checks (flake8, pylint)
+8. THE tox test suite SHALL include type checks (mypy)
+9. ALL code SHALL achieve a pylint rating of 10/10
+10. ALL code SHALL pass formatting checks with max line length of 120 characters
+11. THE validation SHALL be performed before any feature is merged from "dev-new-features" to main worktree

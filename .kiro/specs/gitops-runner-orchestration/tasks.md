@@ -180,7 +180,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Create sync history audit trail
   - _Requirements: 4.1, 4.2, 12.1, 12.2, 12.3, 12.6_
 
-- [ ] 13. MotherGoose Backend - Webhook Handling
+- [x] 13. MotherGoose Backend - Webhook Handling
   - Implement POST /webhooks/gitlab endpoint in FastAPI (create app/routers/webhooks.py)
   - Create webhook authentication using X-Gitlab-Token header (per-Egg shared secrets)
   - Implement webhook event parsing (push, merge_request, pipeline)
@@ -192,19 +192,22 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Include webhook router in main.py (currently missing)
   - _Requirements: 4.1, 4.2, 11.2, 16.1_
 
-- [ ]* 13.1 Write property test for webhook event matching
+- [x] 13.1 Write property test for webhook event matching
+
   - **Property 9: Webhook Event Matching**
   - **Validates: Requirements 4.3**
 
-- [ ]* 13.2 Write property test for GitLab webhook event support
+- [x] 13.2 Write property test for GitLab webhook event support
+
   - **Property 26: GitLab Webhook Event Support**
   - **Validates: Requirements 11.2**
 
-- [ ]* 13.3 Write property test for webhook authentication
+- [x] 13.3 Write property test for webhook authentication
+
   - **Property 33: Webhook Authentication**
   - **Validates: Requirements 16.1**
 
-- [ ] 14. MotherGoose Backend - Runner Orchestration
+- [x] 14. MotherGoose Backend - Runner Orchestration
   - Implement runner type determination logic (serverless vs VM)
   - Create Celery tasks for runner deployment (deploy_runner, terminate_runner)
   - Implement runner state tracking in database
@@ -212,11 +215,12 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Implement runner provisioning workflow
   - _Requirements: 4.4, 4.5, 10.6, 10.7, 11.3_
 
-- [ ]* 13.1 Write property test for runner type determination
+- [x] 14.1 Write property test for runner type determination
+
   - **Property 10: Runner Type Determination**
   - **Validates: Requirements 4.4**
 
-- [ ] 14. MotherGoose Backend - Secret Management Integration
+- [x] 15. MotherGoose Backend - Secret Management Integration
   - Implement SecretReference parser for URI schemes (yc-lockbox://, aws-sm://, vault://)
   - Implement YandexLockboxManager for Yandex Cloud Lockbox
   - Implement AWSSecretsManager for AWS Secrets Manager
@@ -226,35 +230,35 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Integrate secret retrieval into Egg configuration processing
   - _Requirements: 16.7, 16.8, 16.9, 16.10, 16.11, 16.12, 17.1, 17.2, 17.3_
 
-- [ ]* 14.1 Write property test for secret URI parsing
+- [ ]* 15.1 Write property test for secret URI parsing
   - **Property 4b: Secret URI Parsing**
   - **Validates: Requirements 2.9, 16.8**
 
-- [ ]* 14.2 Write property test for secret masking in logs
+- [ ]* 15.2 Write property test for secret masking in logs
   - **Property 4c: Secret Masking in Logs**
   - **Validates: Requirements 16.9**
 
-- [ ]* 14.3 Write property test for secret retrieval from Yandex Cloud Lockbox
+- [ ]* 15.3 Write property test for secret retrieval from Yandex Cloud Lockbox
   - **Property 36: Secret Retrieval from Yandex Cloud Lockbox**
   - **Validates: Requirements 16.7, 17.1**
 
-- [ ]* 14.4 Write property test for secret retrieval from AWS Secrets Manager
+- [ ]* 15.4 Write property test for secret retrieval from AWS Secrets Manager
   - **Property 37: Secret Retrieval from AWS Secrets Manager**
   - **Validates: Requirements 16.7, 17.2**
 
-- [ ]* 14.5 Write property test for secret cache TTL
+- [ ]* 15.5 Write property test for secret cache TTL
   - **Property 38: Secret Cache TTL**
   - **Validates: Requirements 16.11**
 
-- [ ]* 14.6 Write property test for invalid secret reference error
+- [ ]* 15.6 Write property test for invalid secret reference error
   - **Property 39: Invalid Secret Reference Error**
   - **Validates: Requirements 16.12**
 
-- [ ]* 14.7 Write property test for secret rotation propagation
+- [ ]* 15.7 Write property test for secret rotation propagation
   - **Property 40: Secret Rotation Propagation**
   - **Validates: Requirements 17.6**
 
-- [ ] 15. MotherGoose Backend - OpenTofu Integration for Runner Deployment
+- [ ] 16. MotherGoose Backend - OpenTofu Integration for Runner Deployment
   - Verify existing OpenTofu binary management (already implemented in app/services/opentofu_binary.py)
   - Verify existing Jinja2 template rendering (already implemented in app/services/opentofu_configuration.py)
   - Implement S3 artifact caching logic for provider plugins and modules
@@ -263,7 +267,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Note: OpenTofu is used for ALL runner deployment (both Egg runners and Job runners)
   - _Requirements: 4.5, 5.3, 6.1_
 
-- [ ] 16. MotherGoose Backend - Serverless Runner Deployment
+- [ ] 17. MotherGoose Backend - Serverless Runner Deployment
   - Implement serverless container deployment to Yandex Cloud Functions
   - Implement serverless container deployment to AWS Lambda
   - Create container image build process with pre-installed binaries
@@ -271,52 +275,52 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Implement resource cleanup after completion
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7_
 
-- [ ]* 16.1 Write property test for serverless runner timeout
+- [ ]* 17.1 Write property test for serverless runner timeout
   - **Property 12: Serverless Runner Timeout Enforcement**
   - **Validates: Requirements 5.2**
 
-- [ ]* 16.2 Write property test for serverless runner cleanup
+- [ ]* 17.2 Write property test for serverless runner cleanup
   - **Property 13: Serverless Runner Cleanup**
   - **Validates: Requirements 5.6**
 
-- [ ] 17. MotherGoose Backend - VM Runner Deployment
+- [ ] 18. MotherGoose Backend - VM Runner Deployment
   - Implement VM deployment using Compute Module
   - Create Apex and Nadir pool management
   - Implement pool size limit enforcement
   - Implement runner promotion/demotion logic
   - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7_
 
-- [ ]* 17.1 Write property test for Apex pool size limits
+- [ ]* 18.1 Write property test for Apex pool size limits
   - **Property 14: Apex pool Size Limits**
   - **Validates: Requirements 6.7**
 
-- [ ]* 17.2 Write property test for Nadir to Apex promotion
+- [ ]* 18.2 Write property test for Nadir to Apex promotion
   - **Property 15: Nadir to Apex Promotion**
   - **Validates: Requirements 6.5**
 
-- [ ]* 17.3 Write property test for Apex to Nadir demotion
+- [ ]* 18.3 Write property test for Apex to Nadir demotion
   - **Property 16: Apex to Nadir Demotion**
   - **Validates: Requirements 6.6**
 
-- [ ] 18. Checkpoint - MotherGoose Core Functionality
+- [ ] 19. Checkpoint - MotherGoose Core Functionality
   - Ensure all MotherGoose tests pass
   - Verify webhook processing works
   - Test runner deployment to both clouds
   - Ask the user if questions arise
 
-- [ ] 19. UglyFox Backend - Setup and Database Integration
+- [ ] 20. UglyFox Backend - Setup and Database Integration
   - Set up Celery worker structure in new UglyFox project
   - Implement async database operations
   - Create Celery Beat for scheduled tasks
   - _Requirements: 7.1_
 
-- [ ] 20. UglyFox Backend - Policy Engine
+- [ ] 21. UglyFox Backend - Policy Engine
   - Implement policy evaluation engine
   - Parse UF/config.fly for pruning policies
   - Create policy condition evaluator
   - _Requirements: 7.2, 7.4_
 
-- [ ] 21. UglyFox Backend - Runner Lifecycle Management
+- [ ] 22. UglyFox Backend - Runner Lifecycle Management
   - Implement runner health monitoring
   - Create failure threshold termination logic
   - Implement age-based termination
@@ -324,19 +328,19 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Implement audit logging
   - _Requirements: 7.1, 7.3, 7.4, 7.5, 7.6, 7.7_
 
-- [ ]* 21.1 Write property test for failure threshold termination
+- [ ]* 22.1 Write property test for failure threshold termination
   - **Property 17: UglyFox Failure Threshold Termination**
   - **Validates: Requirements 7.3**
 
-- [ ]* 21.2 Write property test for age-based termination
+- [ ]* 22.2 Write property test for age-based termination
   - **Property 18: UglyFox Age-Based Termination**
   - **Validates: Requirements 7.5**
 
-- [ ]* 21.3 Write property test for audit logging
+- [ ]* 22.3 Write property test for audit logging
   - **Property 19: UglyFox Audit Logging**
   - **Validates: Requirements 7.7**
 
-- [ ] 22. Gosling CLI - Runner Mode Implementation
+- [ ] 23. Gosling CLI - Runner Mode Implementation
   - Implement `gosling runner` command
   - Create GitLab Runner Agent manager
   - Implement version synchronization with Egg config
@@ -344,50 +348,50 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Implement signal handlers (SIGTERM, SIGHUP, SIGINT)
   - _Requirements: 6.8, 11.4, 11.5, 11.6_
 
-- [ ]* 22.1 Write property test for runner tag-based routing
+- [ ]* 23.1 Write property test for runner tag-based routing
   - **Property 27: Runner Tag-Based Routing**
   - **Validates: Requirements 11.7**
 
-- [ ]* 22.2 Write property test for environment variable injection
+- [ ]* 23.2 Write property test for environment variable injection
   - **Property 29: Environment Variable Injection**
   - **Validates: Requirements 12.7**
 
-- [ ] 23. Gosling CLI - Runner Mode Metrics
+- [ ] 24. Gosling CLI - Runner Mode Metrics
   - Implement periodic metrics collection (CPU, memory, disk)
   - Create metrics reporting to runner_metrics table
   - Implement heartbeat mechanism
   - _Requirements: 15.1, 15.2, 15.3, 15.4, 15.5_
 
-- [ ] 24. Rift Server - Core Implementation
+- [ ] 25. Rift Server - Core Implementation
   - Implement Docker API proxy
   - Create artifact caching system
   - Implement LRU cache eviction
   - Add authentication for runner access
   - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6_
 
-- [ ]* 24.1 Write property test for Rift cache hit behavior
+- [ ]* 25.1 Write property test for Rift cache hit behavior
   - **Property 20: Rift Cache Hit Behavior**
   - **Validates: Requirements 8.4**
 
-- [ ]* 24.2 Write property test for Rift authentication
+- [ ]* 25.2 Write property test for Rift authentication
   - **Property 21: Rift Authentication Enforcement**
   - **Validates: Requirements 8.6**
 
-- [ ]* 24.3 Write property test for Rift optional dependency
+- [ ]* 25.3 Write property test for Rift optional dependency
   - **Property 22: Rift Optional Dependency**
   - **Validates: Requirements 8.7**
 
-- [ ] 25. Configuration Management
+- [ ] 26. Configuration Management
   - Implement Egg configuration storage and retrieval
   - Create configuration update propagation
   - Implement environment variable injection
   - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6, 12.7_
 
-- [ ]* 25.1 Write property test for Egg config update propagation
+- [ ]* 26.1 Write property test for Egg config update propagation
   - **Property 28: Egg Config Update Propagation**
   - **Validates: Requirements 12.6**
 
-- [ ] 26. Self-Management Jobs
+- [ ] 27. Self-Management Jobs
   - Implement job scheduling with cron expressions (GitLab scheduled pipelines)
   - Create secret rotation job
   - Create Nest repository update job
@@ -398,36 +402,36 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Job runners are for lightweight self-management tasks only
   - _Requirements: 13.1, 13.2, 13.3, 13.4, 13.5, 13.6, 13.7_
 
-- [ ]* 26.1 Write property test for cron job scheduling
+- [ ]* 27.1 Write property test for cron job scheduling
   - **Property 30: Cron Job Scheduling**
   - **Validates: Requirements 13.7**
 
-- [ ] 27. Multi-Cloud Consistency
+- [ ] 28. Multi-Cloud Consistency
   - Implement cloud-agnostic runner behavior
   - Test deployment to both Yandex Cloud and AWS
   - Verify equivalent behavior across clouds
   - _Requirements: 9.7, 9.8_
 
-- [ ]* 27.1 Write property test for multi-cloud deployment consistency
+- [ ]* 28.1 Write property test for multi-cloud deployment consistency
   - **Property 23: Multi-Cloud Deployment Consistency**
   - **Validates: Requirements 9.8**
 
-- [ ] 28. Security Implementation
+- [ ] 29. Security Implementation
   - Implement data encryption at rest
   - Implement TLS for runner communication
   - Set up IAM roles for cloud authentication
   - Implement secret injection from secure storage
   - _Requirements: 16.2, 16.3, 16.4, 16.5, 16.7_
 
-- [ ]* 28.1 Write property test for data encryption at rest
+- [ ]* 29.1 Write property test for data encryption at rest
   - **Property 34: Data Encryption at Rest**
   - **Validates: Requirements 16.4**
 
-- [ ]* 28.2 Write property test for communication encryption
+- [ ]* 29.2 Write property test for communication encryption
   - **Property 35: Communication Encryption**
   - **Validates: Requirements 16.5**
 
-- [ ] 29. Monitoring and Observability
+- [ ] 30. Monitoring and Observability
   - Implement metrics emission for runner provisioning
   - Implement metrics emission for job execution
   - Implement metrics emission for pool sizes
@@ -435,20 +439,20 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Integrate with Prometheus/Grafana
   - _Requirements: 15.1, 15.2, 15.3, 15.4, 15.5, 15.6, 15.7_
 
-- [ ] 30. Integration Testing with Testcontainers
+- [ ] 31. Integration Testing with Testcontainers
   - Set up YDB testcontainer fixtures (already implemented in conftest.py)
   - Set up LocalStack testcontainer for AWS services
   - Create end-to-end test scenarios
   - Test cross-component interactions
   - _Requirements: All_
 
-- [ ] 31. Documentation and Deployment
+- [ ] 32. Documentation and Deployment
   - Create deployment guides for Yandex Cloud and AWS
   - Document API Gateway configuration
   - Create runbooks for common operations
   - Document troubleshooting procedures
 
-- [ ] 32. Final Checkpoint - System Integration
+- [ ] 33. Final Checkpoint - System Integration
   - Run full test suite (unit + property tests)
   - Verify all components work together
   - Test failover scenarios

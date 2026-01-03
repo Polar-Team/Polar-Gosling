@@ -333,3 +333,7 @@ The Polar Gosling GitOps Runner Orchestration system is a comprehensive platform
 9. ALL code SHALL achieve a pylint rating of 10/10
 10. ALL code SHALL pass formatting checks with max line length of 120 characters
 11. THE validation SHALL be performed before any feature is merged from "dev-new-features" to main worktree
+12. THE System SHALL use uv for Python dependency management and package installation
+13. WHEN installing dependencies, THE System SHALL use `uv sync --all-groups` to install all dependency groups
+14. WHEN running tests, THE System SHALL use `uv run pytest` to execute tests in the uv-managed environment
+15. THE System SHALL use uv for fast, reliable dependency resolution and installation

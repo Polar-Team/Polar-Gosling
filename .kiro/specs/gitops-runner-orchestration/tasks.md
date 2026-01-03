@@ -153,16 +153,24 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - **Property 32: Database Transaction Atomicity**
   - **Validates: Requirements 14.7**
 
-- [ ] 10. MotherGoose Backend - Celery Task Queue Setup
+- [x] 10. MotherGoose Backend - Celery Task Queue Setup
   - Set up Celery application with YMQ/SQS backend
-  - Configure Celery Beat for scheduled tasks
+  - Remove Celery Beat (not compatible with serverless)
   - Implement task routing and priority queues
-  - Set up task result backend (Redis or database)
+  - Set up task result backend (SQS/YMQ for production, Redis for development)
   - Configure task retry policies and error handling
   - _Requirements: 4.7_
 
-- [ ] 11. MotherGoose Backend - Git Sync Implementation
-  - Implement periodic Git sync task (every 5 minutes via Celery Beat)
+- [x] 11. MotherGoose Backend - Cloud Trigger Setup
+  - Configure Yandex Cloud Timer Triggers for periodic tasks (Git sync every 5 minutes, health checks every 10 minutes)
+  - Configure AWS EventBridge Scheduler for periodic tasks (Git sync every 5 minutes, health checks every 10 minutes)
+  - Create internal API endpoints for cloud triggers (/internal/sync-git, /internal/health-check)
+  - Implement trigger authentication using secret tokens
+  - Configure API Gateway to allow internal endpoints from cloud triggers only
+  - _Requirements: 4.7, 13.7_
+
+- [x] 12. MotherGoose Backend - Git Sync Implementation
+  - Implement periodic Git sync task (triggered by cloud triggers every 5 minutes)
   - Implement event-driven Git sync on Nest repository push webhooks
   - Create SSH deploy key retrieval from secret storage
   - Implement Git clone/pull operations with deploy key authentication
@@ -172,28 +180,31 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Create sync history audit trail
   - _Requirements: 4.1, 4.2, 12.1, 12.2, 12.3, 12.6_
 
-- [ ] 12. MotherGoose Backend - Webhook Handling
-  - Implement POST /webhooks/gitlab endpoint in FastAPI
-  - Create webhook authentication using per-Egg shared secrets
+- [ ] 13. MotherGoose Backend - Webhook Handling
+  - Implement POST /webhooks/gitlab endpoint in FastAPI (create app/routers/webhooks.py)
+  - Create webhook authentication using X-Gitlab-Token header (per-Egg shared secrets)
   - Implement webhook event parsing (push, merge_request, pipeline)
-  - Create Celery task for async webhook processing
+  - Create Celery task for async webhook processing (app/tasks/webhooks.py already exists)
   - Implement webhook event matching to Eggs
-  - Distinguish between Nest repository webhooks (trigger Git sync) and Egg repository webhooks (trigger runner deployment)
+  - Distinguish between Nest repository webhooks (trigger Git sync) and Egg repository webhooks (trigger runner deployment via OpenTofu)
+  - Note: Jobs folder creates GitLab scheduled pipelines + runner tokens + webhooks for Nest repo
+  - When Nest pipeline fires → GitLab webhook (X-Gitlab-Token) → MotherGoose → Celery Task (SQS/YMQ) → OpenTofu → Deploy Runner
+  - Include webhook router in main.py (currently missing)
   - _Requirements: 4.1, 4.2, 11.2, 16.1_
 
-- [ ]* 12.1 Write property test for webhook event matching
+- [ ]* 13.1 Write property test for webhook event matching
   - **Property 9: Webhook Event Matching**
   - **Validates: Requirements 4.3**
 
-- [ ]* 12.2 Write property test for GitLab webhook event support
+- [ ]* 13.2 Write property test for GitLab webhook event support
   - **Property 26: GitLab Webhook Event Support**
   - **Validates: Requirements 11.2**
 
-- [ ]* 12.3 Write property test for webhook authentication
+- [ ]* 13.3 Write property test for webhook authentication
   - **Property 33: Webhook Authentication**
   - **Validates: Requirements 16.1**
 
-- [ ] 13. MotherGoose Backend - Runner Orchestration
+- [ ] 14. MotherGoose Backend - Runner Orchestration
   - Implement runner type determination logic (serverless vs VM)
   - Create Celery tasks for runner deployment (deploy_runner, terminate_runner)
   - Implement runner state tracking in database
@@ -243,12 +254,13 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - **Property 40: Secret Rotation Propagation**
   - **Validates: Requirements 17.6**
 
-- [ ] 15. MotherGoose Backend - OpenTofu Integration
+- [ ] 15. MotherGoose Backend - OpenTofu Integration for Runner Deployment
   - Verify existing OpenTofu binary management (already implemented in app/services/opentofu_binary.py)
   - Verify existing Jinja2 template rendering (already implemented in app/services/opentofu_configuration.py)
   - Implement S3 artifact caching logic for provider plugins and modules
   - Implement health checks template rendering
   - Generate cloud-init scripts for VMs using templates
+  - Note: OpenTofu is used for ALL runner deployment (both Egg runners and Job runners)
   - _Requirements: 4.5, 5.3, 6.1_
 
 - [ ] 16. MotherGoose Backend - Serverless Runner Deployment
@@ -376,10 +388,14 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - **Validates: Requirements 12.6**
 
 - [ ] 26. Self-Management Jobs
-  - Implement job scheduling with cron expressions
+  - Implement job scheduling with cron expressions (GitLab scheduled pipelines)
   - Create secret rotation job
   - Create Nest repository update job
   - Create runner image update job
+  - Note: Jobs folder creates GitLab pipeline (scheduled) + GitLab runner token + GitLab webhooks for Nest repo
+  - Job runners use OpenTofu deployment (same as Egg runners) triggered by GitLab webhook → MotherGoose → Celery → OpenTofu
+  - Job runner constraints: 10-minute time limit (vs 60 minutes for Egg serverless runners), cannot use Rift servers for caching
+  - Job runners are for lightweight self-management tasks only
   - _Requirements: 13.1, 13.2, 13.3, 13.4, 13.5, 13.6, 13.7_
 
 - [ ]* 26.1 Write property test for cron job scheduling

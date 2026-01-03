@@ -13,10 +13,115 @@ The Polar Gosling GitOps Runner Orchestration system is a multi-cloud CI/CD runn
 
 The system supports deployment to Yandex Cloud and AWS using native Go SDKs, with GitLab integration via the official GitLab Go SDK (gitlab.com/gitlab-org/api/client-go).
 
+## Critical Architecture Distinction: Deployment Mechanisms
+
+**IMPORTANT**: The system uses different deployment mechanisms for different purposes:
+
+### 1. Bootstrap Phase (One-Time Setup) - Uses Go SDKs
+- **Tool**: Gosling CLI
+- **Mechanism**: Native Go SDKs (Yandex Cloud Go SDK, AWS SDK for Go v2)
+- **Purpose**: Deploy MotherGoose, UglyFox, databases, message queues, API Gateway
+- **Frequency**: Once during initial setup, rarely updated
+- **Command**: `gosling deploy --cloud yandex`
+
+### 2. System Triggers (Internal Operations) - Uses Python SDKs
+- **Tool**: MotherGoose Backend
+- **Mechanism**: Python SDKs (boto3 for AWS, yandexcloud for Yandex Cloud)
+- **Purpose**: Create cloud triggers for internal system operations (git-sync, health checks)
+- **Frequency**: During bootstrap, updated when trigger configuration changes
+- **Examples**: Timer Triggers (Yandex Cloud), EventBridge Scheduler (AWS)
+- **Note**: LIMITED to internal system operations only
+
+### 3. ALL Runners (Eggs AND Jobs) - Uses OpenTofu
+- **Tool**: MotherGoose Backend
+- **Mechanism**: OpenTofu with Jinja2 templates
+- **Purpose**: Deploy runners for ALL GitLab projects (both Eggs and Nest repo Jobs)
+- **Frequency**: Continuously, triggered by GitLab webhooks
+- **Process**: GitLab Webhook (X-Gitlab-Token) → MotherGoose → Celery Task (SQS/YMQ) → OpenTofu → Deploy Runner
+
+**Key Insight: Jobs Folder**
+- Jobs folder creates GitLab scheduled pipelines + runner tokens + webhooks for Nest repository
+- When Nest pipeline fires → GitLab webhook → MotherGoose → Celery → OpenTofu (same as Eggs!)
+- Jobs use the SAME OpenTofu deployment mechanism as Eggs, not a separate "self-runner" system
+
+**Job Runner Constraints**:
+- **Time Limit**: 10 minutes maximum execution time (vs 60 minutes for Egg serverless runners)
+- **No Rift Access**: Job runners cannot use Rift servers for caching
+- **Purpose**: Lightweight self-management tasks only (secret rotation, config updates)
+
+**Why This Separation?**
+- **Bootstrap (Go SDKs)**: Type-safe, idiomatic code for complex one-time infrastructure setup
+- **System Triggers (Python SDKs)**: Simple cloud-native service configuration for internal operations
+- **All Runners (OpenTofu)**: Unified declarative infrastructure for ALL GitLab runners (Eggs + Jobs)
+
+**Deployment Flow Diagram**:
+
+```mermaid
+graph TB
+    subgraph "1. BOOTSTRAP (One-Time)"
+        CLI[Gosling CLI]
+        GoSDK[Go SDKs]
+        Bootstrap[Infrastructure<br/>MotherGoose, UglyFox<br/>Databases, Queues]
+        
+        CLI -->|Uses| GoSDK
+        GoSDK -->|Deploys| Bootstrap
+    end
+    
+    subgraph "2. SYSTEM TRIGGERS (Internal)"
+        MG_Trigger[MotherGoose]
+        PySDK[Python SDKs<br/>boto3/yandexcloud]
+        Triggers[Cloud Triggers<br/>Timer/EventBridge]
+        
+        MG_Trigger -->|Uses| PySDK
+        PySDK -->|Creates| Triggers
+    end
+    
+    subgraph "3. ALL RUNNERS (Eggs + Jobs)"
+        subgraph "Egg Runners"
+            EggWebhook[GitLab Webhook<br/>from Egg Repo]
+        end
+        
+        subgraph "Job Runners (Nest Repo)"
+            JobsPipeline[GitLab Scheduled Pipeline<br/>from Nest Repo]
+            JobsWebhook[GitLab Webhook<br/>from Nest Repo]
+        end
+        
+        MG[MotherGoose]
+        Queue[Celery Task<br/>SQS/YMQ]
+        Jinja[Jinja2 Templates]
+        Tofu[OpenTofu]
+        Runner[Runners<br/>VMs & Containers]
+        
+        EggWebhook -->|X-Gitlab-Token| MG
+        JobsPipeline -->|Fires| JobsWebhook
+        JobsWebhook -->|X-Gitlab-Token| MG
+        MG -->|Creates Task| Queue
+        Queue -->|Executes| Jinja
+        Jinja -->|Generates| Tofu
+        Tofu -->|Deploys| Runner
+    end
+    
+    Bootstrap -.->|Enables| MG_Trigger
+    Bootstrap -.->|Enables| MG
+    Triggers -.->|Invoke| MG
+    
+    style CLI fill:#e1f5e1
+    style GoSDK fill:#e1f5e1
+    style Bootstrap fill:#e1f5e1
+    style MG_Trigger fill:#e1e5ff
+    style PySDK fill:#e1e5ff
+    style Triggers fill:#e1e5ff
+    style MG fill:#ffe1e1
+    style Queue fill:#ffe1e1
+    style Jinja fill:#ffe1e1
+    style Tofu fill:#ffe1e1
+    style Runner fill:#ffe1e1
+```
+
 **Key Architectural Decisions**:
 
 - **True GitOps Architecture**: Nest Git repository is the single source of truth for all configuration; database stores only runtime state
-- **Periodic Git Sync**: MotherGoose periodically clones/pulls Nest repo (every 5 minutes via Celery Beat) to sync configurations to database cache
+- **Periodic Git Sync**: MotherGoose periodically clones/pulls Nest repo (every 5 minutes via cloud triggers: Yandex Cloud Timer Trigger / AWS EventBridge Scheduler) to sync configurations to database cache
 - **Event-Driven Sync**: GitLab webhooks trigger immediate Git sync on push events to Nest repository
 - **Zero Secrets in Config**: All secrets stored in cloud secret managers (Yandex Cloud Lockbox / AWS Secrets Manager); configurations contain only secret URI references
 - **Per-Egg Webhook Secrets**: Each Egg has its own webhook secret for security isolation and independent rotation
@@ -31,6 +136,58 @@ The system supports deployment to Yandex Cloud and AWS using native Go SDKs, wit
 - **Message Queue Scaling**: Celery workers scale automatically based on message queue depth (YMQ for Yandex Cloud / SQS for AWS)
 - **Runner Agent Management**: Gosling CLI runner mode manages GitLab Runner Agent lifecycle, version synchronization with Egg's GitLab server, and health metrics reporting
 - **Metrics-Based Pruning**: UglyFox uses runner health metrics from database to make intelligent pruning decisions
+
+## Common Misconceptions
+
+### Misconception 1: "Cloud SDKs are used for runner deployment"
+**Reality**: Cloud SDKs are used for TWO specific purposes ONLY:
+- **Go SDKs**: One-time bootstrap infrastructure deployment (MotherGoose, UglyFox, databases, queues)
+- **Python SDKs**: System trigger creation (Timer Triggers, EventBridge) for internal operations
+
+**ALL runner deployment (Eggs AND Jobs) uses OpenTofu**, not cloud SDKs.
+
+### Misconception 2: "Jobs folder uses special self-runners"
+**Reality**: Jobs folder uses the SAME OpenTofu deployment mechanism as Eggs:
+- Jobs folder creates GitLab scheduled pipelines + runner tokens + webhooks for Nest repo
+- When Nest pipeline fires → GitLab webhook → MotherGoose → Celery → OpenTofu
+- No separate "self-runner" system - it's all unified through OpenTofu
+
+### Misconception 3: "Gosling CLI deploys runners"
+**Reality**: Gosling CLI has two distinct modes:
+- **Bootstrap mode** (`gosling deploy`): One-time infrastructure setup using Go SDKs
+- **Runner mode** (`gosling runner`): Manages GitLab Runner Agent lifecycle on deployed runners
+
+**MotherGoose deploys ALL runners** (Eggs + Jobs), not Gosling CLI.
+
+### Misconception 4: "OpenTofu is only for state management"
+**Reality**: OpenTofu is the PRIMARY and ONLY deployment mechanism for ALL runners:
+- Generates infrastructure configurations from Jinja2 templates
+- Provisions VMs and serverless containers for ALL GitLab projects (Eggs + Nest)
+- Manages infrastructure state in S3
+- Enables declarative, idempotent deployments
+
+### Misconception 5: "The system uses Terraform"
+**Reality**: The system uses **OpenTofu**, not Terraform. This avoids license issues with HashiCorp's BSL license change. Always refer to "OpenTofu" in documentation and code.
+- IAM authentication and secret retrieval
+
+**Runner deployment uses OpenTofu**, not cloud SDKs directly.
+
+### Misconception 2: "Gosling CLI deploys runners"
+**Reality**: Gosling CLI has two distinct modes:
+- **Bootstrap mode** (`gosling deploy`): One-time infrastructure setup using Go SDKs
+- **Runner mode** (`gosling runner`): Manages GitLab Runner Agent lifecycle on deployed runners
+
+**MotherGoose deploys runners**, not Gosling CLI. MotherGoose uses OpenTofu with Jinja2 templates.
+
+### Misconception 3: "OpenTofu is only for state management"
+**Reality**: OpenTofu is the PRIMARY deployment mechanism for runners. It:
+- Generates infrastructure configurations from Jinja2 templates
+- Provisions VMs and serverless containers
+- Manages infrastructure state in S3
+- Enables declarative, idempotent deployments
+
+### Misconception 4: "The system uses Terraform"
+**Reality**: The system uses **OpenTofu**, not Terraform. This avoids license issues with HashiCorp's BSL license change. Always refer to "OpenTofu" in documentation and code.
 
 ## Architecture
 
@@ -76,7 +233,7 @@ graph TB
     end
     
     subgraph "MotherGoose Sync Process"
-        CeleryBeat[Celery Beat<br/>Every 5 minutes]
+        CloudTrigger[Cloud Trigger<br/>Every 5 minutes<br/>YC Timer / AWS EventBridge]
         GitSync[Git Sync Task]
         Parser[Fly Parser]
         DBUpdate[Database Update]
@@ -91,10 +248,10 @@ graph TB
         RunnerDeploy[Runner Deployment]
     end
     
-    NestRepo -->|1. Periodic Pull| CeleryBeat
+    NestRepo -->|1. Periodic Pull| CloudTrigger
     NestRepo -->|2. Push Event| Webhook
     
-    CeleryBeat --> GitSync
+    CloudTrigger --> GitSync
     Webhook --> GitSync
     
     GitSync -->|3. Retrieve Deploy Key| Lockbox
@@ -107,16 +264,31 @@ graph TB
     RunnerDeploy -->|8. Retrieve Secrets| Lockbox
 ```
 
-#### Periodic Sync (Celery Beat)
+#### Periodic Sync (Cloud Triggers)
 
-MotherGoose runs a scheduled Celery task every 5 minutes to sync Git → Database:
+MotherGoose runs a scheduled task every 5 minutes via cloud-native triggers to sync Git → Database:
+
+**Yandex Cloud**: Timer Trigger invokes `/internal/sync-git` endpoint every 5 minutes
+**AWS**: EventBridge Scheduler rule invokes `/internal/sync-git` endpoint every 5 minutes
 
 ```python
-@celery_beat.schedule(interval=timedelta(minutes=5))
+@app.post("/internal/sync-git")
+async def trigger_git_sync():
+    """
+    Endpoint invoked by cloud triggers for periodic Git sync
+    
+    Triggered by:
+    - Yandex Cloud Timer Trigger (every 5 minutes)
+    - AWS EventBridge Scheduler (every 5 minutes)
+    """
+    # Queue Celery task for async processing
+    await sync_nest_config.apply_async()
+    return {"status": "sync_queued"}
+
 @celery.task
 async def sync_nest_config():
     """
-    Periodically sync Nest Git repo to database cache
+    Celery task to sync Nest Git repo to database cache
     """
     # 1. Retrieve deploy key from secret storage
     deploy_key = await secret_manager.get_secret(
@@ -1519,6 +1691,8 @@ identifier   = [a-zA-Z_][a-zA-Z0-9_]*
 **API Endpoints**:
 ```python
 POST   /webhooks/gitlab          # Receive GitLab webhooks (triggers Celery task)
+POST   /internal/sync-git        # Triggered by cloud triggers for periodic Git sync
+POST   /internal/health-check    # Triggered by cloud triggers for runner health checks
 GET    /runners                  # List all runners
 GET    /runners/{id}             # Get runner details
 POST   /runners                  # Manually create runner (triggers Celery task)
@@ -1531,6 +1705,83 @@ GET    /eggs/{name}/plans/{id}   # Get specific deployment plan details
 POST   /eggs                     # Create or update Egg configuration (used by Gosling CLI during deploy)
 POST   /jobs/{name}/trigger      # Trigger self-management job (triggers Celery task)
 GET    /health                   # Health check
+```
+
+**Cloud Trigger Configuration**:
+
+For serverless deployments, periodic tasks are triggered by cloud-native schedulers instead of Celery Beat:
+
+**Yandex Cloud Timer Triggers**:
+```yaml
+# Configured via Yandex Cloud Console or Terraform
+triggers:
+  - name: git-sync-trigger
+    type: timer
+    schedule: "*/5 * * * *"  # Every 5 minutes (cron format)
+    invoke:
+      function_id: mothergoose-function-id
+      service_account_id: mothergoose-sa-id
+      http:
+        method: POST
+        path: /internal/sync-git
+        headers:
+          X-Trigger-Auth: "yc-lockbox://api-keys/trigger-auth-token"
+  
+  - name: runner-health-check-trigger
+    type: timer
+    schedule: "*/10 * * * *"  # Every 10 minutes
+    invoke:
+      function_id: uglyfox-function-id
+      service_account_id: uglyfox-sa-id
+      http:
+        method: POST
+        path: /internal/health-check
+        headers:
+          X-Trigger-Auth: "yc-lockbox://api-keys/trigger-auth-token"
+```
+
+**AWS EventBridge Scheduler**:
+```json
+{
+  "Name": "git-sync-schedule",
+  "ScheduleExpression": "rate(5 minutes)",
+  "Target": {
+    "Arn": "arn:aws:lambda:region:account:function:mothergoose",
+    "RoleArn": "arn:aws:iam::account:role/EventBridgeRole",
+    "Input": "{\"path\": \"/internal/sync-git\", \"httpMethod\": \"POST\"}"
+  },
+  "FlexibleTimeWindow": {
+    "Mode": "OFF"
+  }
+}
+```
+
+**Internal Endpoint Authentication**:
+
+Internal endpoints invoked by cloud triggers require authentication to prevent unauthorized access:
+
+```python
+from fastapi import Header, HTTPException
+
+async def verify_trigger_auth(x_trigger_auth: str = Header(...)):
+    """Verify cloud trigger authentication"""
+    expected_token = await secret_manager.get_secret(
+        "yc-lockbox://api-keys/trigger-auth-token"
+    )
+    if x_trigger_auth != expected_token.value:
+        raise HTTPException(status_code=401, detail="Invalid trigger authentication")
+
+@app.post("/internal/sync-git", dependencies=[Depends(verify_trigger_auth)])
+async def trigger_git_sync():
+    """Endpoint invoked by cloud triggers for periodic Git sync"""
+    await sync_nest_config.apply_async()
+    return {"status": "sync_queued"}
+
+@app.post("/internal/health-check", dependencies=[Depends(verify_trigger_auth)])
+async def trigger_health_check():
+    """Endpoint invoked by cloud triggers for runner health checks"""
+    await check_runner_health.apply_async()
+    return {"status": "health_check_queued"}
 ```
 
 **Status Query Endpoints** (for Gosling CLI):
@@ -1696,7 +1947,7 @@ class OpenTofuBinFileInfo(BaseModel):
 **Purpose**: Monitor runner health, prune failed runners, manage Apex/Nadir transitions.
 
 **Architecture**:
-- **Scheduled Tasks**: Celery Beat for periodic health checks
+- **Scheduled Tasks**: Cloud triggers (Yandex Cloud Timer Trigger / AWS EventBridge Scheduler) for periodic health checks
 - **Event-Driven**: Triggered by runner state changes via message queue
 - **API Access**: Via API Gateway (same as MotherGoose)
 

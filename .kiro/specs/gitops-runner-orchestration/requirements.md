@@ -82,13 +82,15 @@ The Polar Gosling GitOps Runner Orchestration system is a comprehensive platform
 
 **User Story:** As a system administrator, I want a central orchestration server, so that I can manage job distribution and runner deployment across multiple clouds.
 
+**IMPORTANT NOTE**: MotherGoose deploys runners using OpenTofu with Jinja2 templates, NOT cloud SDKs directly. Cloud SDKs are only used for bootstrap infrastructure (one-time setup) and cloud-native services (Timer Triggers, EventBridge, etc.).
+
 #### Acceptance Criteria
 
 1. THE MotherGoose_Server SHALL receive webhooks from GitLab repositories
 2. WHEN a webhook is received, THE MotherGoose_Server SHALL parse the event payload
 3. THE MotherGoose_Server SHALL match webhook events to configured Eggs
 4. THE MotherGoose_Server SHALL determine the appropriate runner type (serverless or VM) based on job requirements
-5. THE MotherGoose_Server SHALL deploy runners using OpenTofu/Terraform configurations
+5. THE MotherGoose_Server SHALL deploy runners using OpenTofu configurations
 6. THE MotherGoose_Server SHALL track runner states in a database (YDB or DynamoDB)
 7. THE MotherGoose_Server SHALL provide REST API endpoints for runner management
 8. THE MotherGoose_Server SHALL support deployment to both Yandex Cloud and AWS
@@ -153,6 +155,8 @@ The Polar Gosling GitOps Runner Orchestration system is a comprehensive platform
 ### Requirement 9: Multi-Cloud Infrastructure Provisioning via Go SDKs
 
 **User Story:** As a cloud architect, I want infrastructure provisioned across multiple clouds using native Go SDKs, so that I can leverage the best features of each provider with type-safe, idiomatic code.
+
+**IMPORTANT NOTE**: Go SDKs are used ONLY for bootstrap infrastructure deployment (one-time setup of MotherGoose, UglyFox, databases, queues). Runtime runner deployment uses OpenTofu, not Go SDKs.
 
 #### Acceptance Criteria
 

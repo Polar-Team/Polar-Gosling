@@ -230,35 +230,43 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Integrate secret retrieval into Egg configuration processing
   - _Requirements: 16.7, 16.8, 16.9, 16.10, 16.11, 16.12, 17.1, 17.2, 17.3_
 
-- [ ]* 15.1 Write property test for secret URI parsing
+- [x] 15.1 Write property test for secret URI parsing
+
   - **Property 4b: Secret URI Parsing**
   - **Validates: Requirements 2.9, 16.8**
 
-- [ ]* 15.2 Write property test for secret masking in logs
+- [x] 15.2 Write property test for secret masking in logs
+
   - **Property 4c: Secret Masking in Logs**
   - **Validates: Requirements 16.9**
 
-- [ ]* 15.3 Write property test for secret retrieval from Yandex Cloud Lockbox
+- [x] 15.3 Write property test for secret retrieval from Yandex Cloud Lockbox
+
   - **Property 36: Secret Retrieval from Yandex Cloud Lockbox**
   - **Validates: Requirements 16.7, 17.1**
 
-- [ ]* 15.4 Write property test for secret retrieval from AWS Secrets Manager
+- [x] 15.4 Write property test for secret retrieval from AWS Secrets Manager
+
   - **Property 37: Secret Retrieval from AWS Secrets Manager**
   - **Validates: Requirements 16.7, 17.2**
 
-- [ ]* 15.5 Write property test for secret cache TTL
+- [x] 15.5 Write property test for secret cache TTL
+
   - **Property 38: Secret Cache TTL**
   - **Validates: Requirements 16.11**
 
-- [ ]* 15.6 Write property test for invalid secret reference error
+- [x] 15.6 Write property test for invalid secret reference error
+
   - **Property 39: Invalid Secret Reference Error**
   - **Validates: Requirements 16.12**
 
-- [ ]* 15.7 Write property test for secret rotation propagation
+
+- [x] 15.7 Write property test for secret rotation propagation
+
   - **Property 40: Secret Rotation Propagation**
   - **Validates: Requirements 17.6**
 
-- [ ] 16. MotherGoose Backend - OpenTofu Integration for Runner Deployment
+- [x] 16. MotherGoose Backend - OpenTofu Integration for Runner Deployment
   - Verify existing OpenTofu binary management (already implemented in app/services/opentofu_binary.py)
   - Verify existing Jinja2 template rendering (already implemented in app/services/opentofu_configuration.py)
   - Implement S3 artifact caching logic for provider plugins and modules

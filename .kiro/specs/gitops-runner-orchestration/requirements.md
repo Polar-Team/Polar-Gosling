@@ -337,3 +337,20 @@ The Polar Gosling GitOps Runner Orchestration system is a comprehensive platform
 13. WHEN installing dependencies, THE System SHALL use `uv sync --all-groups` to install all dependency groups
 14. WHEN running tests, THE System SHALL use `uv run pytest` to execute tests in the uv-managed environment
 15. THE System SHALL use uv for fast, reliable dependency resolution and installation
+
+### Requirement 20: Code Comment Standards for Future Work
+
+**User Story:** As a developer, I want a standardized format for marking future work in code comments, so that task references are concise, consistent, and easy to identify without cluttering the codebase.
+
+#### Acceptance Criteria
+
+1. ALL code comments referencing future work SHALL use the format "# Task N: Brief description"
+2. THE task comment format SHALL NOT use "TODO" keyword
+3. THE task comment SHALL reference the task number from tasks.md
+4. THE task comment SHALL include a brief description of what needs to be done
+5. THE total length of a task comment SHALL NOT exceed 42 characters
+6. WHEN a task has subtasks, THE comment format SHALL be "# Task N.M: Brief description"
+7. THE brief description SHALL be concise and action-oriented
+8. THE task comment SHALL appear on a single line
+9. WHEN task comments are added, developers SHALL ensure they reference valid task numbers from the implementation plan
+10. THE System SHALL reject code with verbose or non-standard task comment formats during code review

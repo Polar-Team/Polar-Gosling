@@ -37,12 +37,21 @@ The Polar Gosling GitOps Runner Orchestration system is a comprehensive platform
 1. THE Nest_Repository SHALL contain an "Eggs" directory for managed repository configurations
 2. THE Nest_Repository SHALL contain a "Jobs" directory for self-management task definitions
 3. THE Nest_Repository SHALL contain a "UF" directory for UglyFox configuration
-4. WHEN an Egg is a single project, THE Eggs_Directory SHALL contain a project folder with a config.fly file
-5. WHEN multiple projects are grouped, THE Eggs_Directory SHALL contain an EggsBucket folder with a config.fly file
-6. THE EggsBucket_Config SHALL define shared runner configuration for multiple repositories
-7. THE EggsBucket_Config SHALL contain a "repositories" block listing all managed repositories
-8. THE Jobs_Directory SHALL contain files named with pattern "{job_name}.fly"
-9. THE UF_Directory SHALL contain a file named "config.fly" with runner pruning policies
+4. THE Nest_Repository SHALL contain a "MG" directory for MotherGoose infrastructure configuration
+5. WHEN an Egg is a single project, THE Eggs_Directory SHALL contain a project folder with a config.fly file
+6. WHEN multiple projects are grouped, THE Eggs_Directory SHALL contain an EggsBucket folder with a config.fly file
+7. THE EggsBucket_Config SHALL define shared runner configuration for multiple repositories
+8. THE EggsBucket_Config SHALL contain a "repositories" block listing all managed repositories
+9. THE Jobs_Directory SHALL contain files named with pattern "{job_name}.fly"
+10. THE UF_Directory SHALL contain a file named "config.fly" with runner pruning policies
+11. THE MG_Directory SHALL contain a file named "config.fly" with MotherGoose infrastructure configuration
+12. THE MG_Config SHALL define API Gateway configuration for MotherGoose and UglyFox
+13. THE MG_Config SHALL define serverless container configuration for MotherGoose FastAPI application
+14. THE MG_Config SHALL define serverless container configuration for Celery workers
+15. THE MG_Config SHALL define serverless container configuration for UglyFox workers
+16. THE MG_Config SHALL define message queue configuration (YMQ for Yandex Cloud, SQS for AWS)
+17. THE MG_Config SHALL define cloud trigger configuration (Timer Triggers for Yandex Cloud, EventBridge for AWS)
+18. THE MG_Config SHALL define authentication function configuration for API Gateway endpoints
 
 ### Requirement 2: Fly Language Parser and Interpreter
 

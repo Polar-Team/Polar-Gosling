@@ -885,9 +885,10 @@ gosling init --cloud yandex --secret-backend yc-lockbox
 
 **What it does**:
 1. **Create Nest Repository Structure**:
-   - Creates `Eggs/`, `Jobs/`, `UF/` directories
+   - Creates `Eggs/`, `Jobs/`, `UF/`, `MG/` directories
    - Creates `README.md` with documentation
    - Creates `.gitignore` with security exclusions
+   - Creates `MG/config.fly` with default MotherGoose infrastructure configuration
 
 2. **Git Repository Validation**:
    - Checks if directory is a Git repository
@@ -997,6 +998,399 @@ gosling deploy --cloud yandex --region ru-central1-a
 **Subsequent runs**:
 - Validates configuration
 - Shows current deployment status
+- Can update infrastructure if needed
+- **Does NOT re-deploy everything**
+
+### MG Folder - MotherGoose Infrastructure Configuration
+
+The `MG/` directory in the Nest repository contains the infrastructure configuration for the MotherGoose and UglyFox backend services. This configuration is deployed once during bootstrap using `gosling deploy` and defines all serverless infrastructure components.
+
+**MG/config.fly Structure**:
+
+```hcl
+# MG/config.fly - MotherGoose Infrastructure Configuration
+
+mothergoose {
+  # API Gateway Configuration
+  api_gateway {
+    name = "polar-gosling-api"
+    
+    # OpenAPI specification for API Gateway
+    openapi_spec = "openapi.yaml"
+    
+    # Authentication function for webhook endpoints
+    auth_function {
+      name = "webhook-auth"
+      runtime = "python312"
+      handler = "auth.validate_webhook"
+      memory = 128
+      timeout = 5
+      
+      # Environment variables for auth function
+      env {
+        SECRET_BACKEND = "yc-lockbox"
+      }
+    }
+    
+    # CORS configuration
+    cors {
+      allowed_origins = ["*"]
+      allowed_methods = ["GET", "POST", "PUT", "DELETE"]
+      allowed_headers = ["*"]
+    }
+  }
+  
+  # MotherGoose FastAPI Application
+  fastapi_app {
+    name = "mothergoose-api"
+    runtime = "python312"
+    memory = 512
+    timeout = 30
+    min_instances = 1
+    max_instances = 10
+    
+    # Container image from registry
+    image = "cr.yandex/polar-gosling/mothergoose:latest"
+    
+    # Environment variables
+    env {
+      DATABASE_TYPE = "ydb"
+      MESSAGE_QUEUE_TYPE = "ymq"
+      SECRET_BACKEND = "yc-lockbox"
+      LOG_LEVEL = "INFO"
+    }
+    
+    # Service account for IAM permissions
+    service_account = "mothergoose-sa"
+  }
+  
+  # Celery Workers for Async Task Processing
+  celery_workers {
+    name = "mothergoose-celery"
+    runtime = "python312"
+    memory = 1024
+    timeout = 300
+    min_instances = 2
+    max_instances = 20
+    
+    # Container image from registry
+    image = "cr.yandex/polar-gosling/mothergoose:latest"
+    
+    # Celery command override
+    command = ["celery", "-A", "mothergoose.celery_app", "worker", "--loglevel=info"]
+    
+    # Environment variables
+    env {
+      DATABASE_TYPE = "ydb"
+      MESSAGE_QUEUE_TYPE = "ymq"
+      SECRET_BACKEND = "yc-lockbox"
+      CELERY_BROKER_URL = "sqs://ymq.yandexcloud.net"
+      CELERY_RESULT_BACKEND = "ydb://database-endpoint"
+      LOG_LEVEL = "INFO"
+    }
+    
+    # Service account for IAM permissions
+    service_account = "mothergoose-sa"
+    
+    # Auto-scaling based on queue depth
+    scaling {
+      metric = "queue_depth"
+      target_value = 10
+      scale_up_threshold = 20
+      scale_down_threshold = 5
+    }
+  }
+  
+  # UglyFox Celery Workers for Runner Lifecycle Management
+  uglyfox_workers {
+    name = "uglyfox-celery"
+    runtime = "python312"
+    memory = 512
+    timeout = 180
+    min_instances = 1
+    max_instances = 5
+    
+    # Container image from registry
+    image = "cr.yandex/polar-gosling/mothergoose:latest"
+    
+    # Celery command for UglyFox tasks
+    command = ["celery", "-A", "mothergoose.celery_app", "worker", "-Q", "uglyfox", "--loglevel=info"]
+    
+    # Environment variables
+    env {
+      DATABASE_TYPE = "ydb"
+      MESSAGE_QUEUE_TYPE = "ymq"
+      SECRET_BACKEND = "yc-lockbox"
+      CELERY_BROKER_URL = "sqs://ymq.yandexcloud.net"
+      LOG_LEVEL = "INFO"
+    }
+    
+    # Service account for IAM permissions
+    service_account = "uglyfox-sa"
+  }
+  
+  # Message Queues
+  message_queues {
+    # Main webhook processing queue
+    webhook_queue {
+      name = "mothergoose-webhooks"
+      visibility_timeout = 300
+      message_retention = 86400
+      max_receives = 3
+      dead_letter_queue = "mothergoose-dlq"
+    }
+    
+    # UglyFox pruning queue
+    uglyfox_queue {
+      name = "uglyfox-tasks"
+      visibility_timeout = 180
+      message_retention = 86400
+      max_receives = 3
+      dead_letter_queue = "uglyfox-dlq"
+    }
+    
+    # Dead letter queues
+    dead_letter_queue {
+      name = "mothergoose-dlq"
+      message_retention = 604800  # 7 days
+    }
+    
+    dead_letter_queue {
+      name = "uglyfox-dlq"
+      message_retention = 604800  # 7 days
+    }
+  }
+  
+  # Cloud Triggers for Periodic Tasks
+  triggers {
+    # Git sync trigger (every 5 minutes)
+    git_sync {
+      name = "git-sync-trigger"
+      schedule = "*/5 * * * *"  # Cron expression
+      target_function = "mothergoose-api"
+      endpoint = "/internal/sync-git"
+      method = "POST"
+      
+      # Authentication for internal endpoint
+      service_account = "mothergoose-sa"
+    }
+    
+    # UglyFox health check trigger (every 10 minutes)
+    health_check {
+      name = "uglyfox-health-trigger"
+      schedule = "*/10 * * * *"  # Cron expression
+      target_function = "mothergoose-api"
+      endpoint = "/internal/uglyfox/health-check"
+      method = "POST"
+      
+      # Authentication for internal endpoint
+      service_account = "uglyfox-sa"
+    }
+    
+    # Runner metrics collection (every 1 minute)
+    metrics_collection {
+      name = "metrics-collection-trigger"
+      schedule = "* * * * *"  # Every minute
+      target_function = "mothergoose-api"
+      endpoint = "/internal/metrics/collect"
+      method = "POST"
+      
+      # Authentication for internal endpoint
+      service_account = "mothergoose-sa"
+    }
+  }
+  
+  # Database Configuration
+  database {
+    type = "ydb"
+    name = "polar-gosling-db"
+    mode = "serverless"
+    
+    # Tables
+    tables {
+      eggs_config {
+        name = "eggs_config"
+        primary_key = ["egg_name"]
+        columns = [
+          {name = "egg_name", type = "String"},
+          {name = "config_json", type = "Json"},
+          {name = "git_commit", type = "String"},
+          {name = "synced_at", type = "Timestamp"}
+        ]
+      }
+      
+      runners {
+        name = "runners"
+        primary_key = ["runner_id"]
+        columns = [
+          {name = "runner_id", type = "String"},
+          {name = "egg_name", type = "String"},
+          {name = "state", type = "String"},
+          {name = "cloud_provider", type = "String"},
+          {name = "created_at", type = "Timestamp"},
+          {name = "last_heartbeat", type = "Timestamp"}
+        ]
+        
+        # Secondary index for querying by egg_name
+        global_secondary_index {
+          name = "egg_name_index"
+          partition_key = "egg_name"
+          sort_key = "created_at"
+        }
+      }
+      
+      deployment_plans {
+        name = "deployment_plans"
+        primary_key = ["plan_id"]
+        columns = [
+          {name = "plan_id", type = "String"},
+          {name = "egg_name", type = "String"},
+          {name = "plan_binary", type = "Bytes"},
+          {name = "created_at", type = "Timestamp"},
+          {name = "applied_at", type = "Timestamp"}
+        ]
+      }
+    }
+  }
+  
+  # S3 Buckets for State and Binaries
+  storage {
+    state_bucket {
+      name = "polar-gosling-state"
+      versioning = true
+      lifecycle_rules {
+        old_versions {
+          expiration_days = 90
+        }
+      }
+    }
+    
+    binary_bucket {
+      name = "polar-gosling-binaries"
+      versioning = false
+    }
+  }
+  
+  # IAM Service Accounts
+  service_accounts {
+    mothergoose {
+      name = "mothergoose-sa"
+      roles = [
+        "lockbox.payloadViewer",
+        "ydb.editor",
+        "ymq.reader",
+        "ymq.writer",
+        "storage.editor",
+        "compute.admin",
+        "serverless.containers.admin"
+      ]
+    }
+    
+    uglyfox {
+      name = "uglyfox-sa"
+      roles = [
+        "lockbox.payloadViewer",
+        "ydb.viewer",
+        "ymq.reader",
+        "ymq.writer",
+        "compute.admin"
+      ]
+    }
+  }
+}
+```
+
+**AWS Equivalent Configuration**:
+
+For AWS deployments, the MG/config.fly uses AWS-specific services:
+
+```hcl
+mothergoose {
+  api_gateway {
+    type = "aws_api_gateway_v2"  # HTTP API
+    # ... similar structure
+  }
+  
+  fastapi_app {
+    type = "aws_lambda"
+    # ... similar structure
+  }
+  
+  celery_workers {
+    type = "aws_lambda"
+    # ... similar structure
+  }
+  
+  message_queues {
+    type = "aws_sqs"
+    # ... similar structure
+  }
+  
+  triggers {
+    git_sync {
+      type = "aws_eventbridge_scheduler"
+      # ... similar structure
+    }
+  }
+  
+  database {
+    type = "dynamodb"
+    # ... similar structure
+  }
+  
+  storage {
+    type = "aws_s3"
+    # ... similar structure
+  }
+}
+```
+
+**Deployment Process**:
+
+When `gosling deploy` is executed:
+
+1. **Parse MG/config.fly**: Gosling CLI reads and validates the MG configuration
+2. **Generate Cloud Resources**: Converts .fly configuration to cloud-specific SDK calls
+3. **Deploy Infrastructure**:
+   - Create IAM service accounts and roles
+   - Create databases (YDB/DynamoDB)
+   - Create message queues (YMQ/SQS)
+   - Create S3 buckets for state and binaries
+   - Deploy API Gateway with OpenAPI spec
+   - Deploy MotherGoose FastAPI container
+   - Deploy Celery worker containers
+   - Deploy UglyFox worker containers
+   - Create cloud triggers (Timer Triggers/EventBridge)
+4. **Configure Networking**: Set up VPC, subnets, security groups (if needed)
+5. **Trigger Initial Sync**: Call `/internal/sync-git` to populate database from Nest repo
+6. **Display Endpoints**: Show API Gateway URL for webhook configuration
+
+**Configuration Updates**:
+
+To update the MG infrastructure configuration:
+
+```bash
+# Modify MG/config.fly
+vim MG/config.fly
+
+# Validate changes
+gosling validate MG/config.fly
+
+# Apply changes
+gosling deploy --cloud yandex --update-mg
+
+# Or for specific components
+gosling deploy --cloud yandex --update-mg --components api_gateway,celery_workers
+```
+
+**Key Design Decisions**:
+
+- **Serverless-First**: All components run as serverless functions/containers for cost efficiency
+- **Auto-Scaling**: Celery workers scale automatically based on queue depth
+- **Separation of Concerns**: MotherGoose and UglyFox have separate service accounts and permissions
+- **Internal Endpoints**: Cloud triggers invoke internal endpoints (not exposed via API Gateway)
+- **Dead Letter Queues**: Failed tasks are moved to DLQ for manual inspection
+- **Versioned State**: S3 buckets use versioning for rollback capability
 - Can update infrastructure if needed
 - **Does NOT re-deploy everything**
 

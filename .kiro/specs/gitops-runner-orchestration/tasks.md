@@ -284,11 +284,39 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Implement resource cleanup after completion
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7_
 
-- [ ]* 17.1 Write property test for serverless runner timeout
+- [ ] 17.1 Implement OpenTofu template rendering for runner deployment
+  - Extend `OpenTofuConfiguration.__create_tofu_configuration_from_templates()` to render additional templates
+  - Implement `tofu_providers_tf.j2` → `providers.tf` rendering
+    - Render provider blocks with settings from Egg configuration
+    - Support Yandex Cloud provider configuration
+    - Support AWS provider configuration
+  - Implement `tofu_resources_tf.j2` → `resources.tf` rendering
+    - Render TLS private key resource for SSH access
+    - Render local_file resource for SSH key storage
+    - Render worker module block with dynamic source (git or registry)
+    - Render rift module block (conditional, based on tofu_rift_required)
+    - Support for_each iteration over worker/rift instances
+    - Support cloud-init injection for VM chassis
+  - Implement `tofu_variables_tf.j2` → `variables.tf` rendering
+    - Render tofu_worker_instances variable definition
+    - Render tofu_rift_instances variable definition (conditional)
+  - Implement `tofu_data_tf.j2` → `data.tf` rendering (currently empty, prepare for future use)
+  - Implement `tofu_rc.j2` → `.terraformrc` or `.tofurc` rendering
+    - Configure provider installation methods
+    - Configure plugin cache directory
+  - Update `TofuSetting` dataclass to include new configuration options:
+    - `worker_module_source` (git URL or registry URL with version)
+    - `rift_module_source` (optional, for Rift server deployment)
+    - `worker_instances` (map of instance configurations)
+    - `rift_instances` (optional map of Rift instance configurations)
+    - `vm_key_algorithm` and `vm_key_rsa_bits` for SSH key generation
+  - _Requirements: 5.1, 5.3, 6.1_
+
+- [ ]* 17.2 Write property test for serverless runner timeout
   - **Property 12: Serverless Runner Timeout Enforcement**
   - **Validates: Requirements 5.2**
 
-- [ ]* 17.2 Write property test for serverless runner cleanup
+- [ ]* 17.3 Write property test for serverless runner cleanup
   - **Property 13: Serverless Runner Cleanup**
   - **Validates: Requirements 5.6**
 

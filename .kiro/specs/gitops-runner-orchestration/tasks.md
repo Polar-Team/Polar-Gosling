@@ -276,8 +276,9 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - _Requirements: 4.5, 5.3, 6.1_
 
 - [ ] 17. MotherGoose Backend - Serverless Runner Deployment
-  - Implement serverless container deployment to Yandex Cloud Functions
-  - Implement serverless container deployment to AWS Lambda
+  - Implement Serverless deployment using Compute Module
+  - Implement serverless container deployment to Yandex Cloud Serverless
+  - Implement serverless container deployment to AWS Lambda Fargate
   - Create container image build process with pre-installed binaries
   - Implement 60-minute timeout enforcement
   - Implement resource cleanup after completion

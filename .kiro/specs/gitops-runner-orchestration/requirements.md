@@ -354,3 +354,18 @@ The Polar Gosling GitOps Runner Orchestration system is a comprehensive platform
 8. THE task comment SHALL appear on a single line
 9. WHEN task comments are added, developers SHALL ensure they reference valid task numbers from the implementation plan
 10. THE System SHALL reject code with verbose or non-standard task comment formats during code review
+
+### Requirement 21: Test Execution with YDB Static Port Mapping
+
+**User Story:** As a developer running tests with YDB, I want the test execution agent to wait for test completion, so that parallel test execution does not fail due to YDB's static port mapping conflicts.
+
+#### Acceptance Criteria
+
+1. WHEN running tests using `tox`, THE Agent SHALL wait until all tests pass or fail before proceeding
+2. WHEN running tests using `uv run pytest`, THE Agent SHALL wait until all tests pass or fail before proceeding
+3. THE Agent SHALL NOT terminate test execution prematurely
+4. THE Agent SHALL handle YDB static port mapping conflicts by preventing parallel test execution
+5. WHEN YDB port conflicts occur, THE Agent SHALL serialize test execution to avoid port collisions
+6. THE Agent SHALL report test results only after complete test suite execution
+7. WHEN tests are running, THE Agent SHALL monitor test process completion status
+8. THE Agent SHALL NOT assume test success until explicit pass/fail status is received

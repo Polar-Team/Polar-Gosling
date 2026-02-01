@@ -138,6 +138,40 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Implement connection pooling for YDB and DynamoDB
   - _Requirements: 4.6, 14.1, 14.2, 14.3, 14.4, 14.5, 14.6, 14.7_
 
+- [x] 9.4 Complete deployment_plans table implementation
+  - Create DeploymentPlan Pydantic model in app/model/runners_models.py
+  - Create DeploymentPlansTableYDB dataclass with proper schema
+  - Add deployment_plans table to RunnerModelYDB.tables list
+  - Implement actual database operations in DeploymentPlanService
+  - Update deployment_plan_service.py to use real database queries
+  - Add to_storage_dict() method for DeploymentPlan model
+  - _Requirements: 14.3_
+
+- [x] 9.5 Implement runner queries by egg_name
+  - Add list_runners_by_egg(egg_name: str) method to RunnerService
+  - Query runners table filtering by egg_name column
+  - Return list of Runner objects for the specified egg
+  - Update GET /eggs/{name}/status endpoint to populate active_runners field
+  - Add unit tests for runner queries by egg_name
+  - _Requirements: 4.6, 14.1_
+
+- [x] 9.6 Configure database schema injection
+  - Create get_ydb_schema() function in app/core/config.py
+  - Read YDB configuration from environment variables
+  - Initialize YDB connection on application startup
+  - Register schema as FastAPI dependency in main.py
+  - Update get_ydb_schema() in app/routers/eggs.py to use injected schema
+  - Add configuration validation and error handling
+  - _Requirements: 14.1_
+
+- [x] 9.7 Add Git commit tracking to egg configurations
+  - Update create_or_update_egg endpoint to accept git_commit parameter
+  - Modify EggConfigRequest schema to include optional git_commit field
+  - Update Git sync task to pass actual commit hash when upserting eggs
+  - Change default from "unknown" to actual Git commit hash
+  - Add validation to ensure git_commit is a valid SHA hash
+  - _Requirements: 12.6, 14.3_
+
 - [x] 9.1 Write property test for runner state persistence
 
   - **Property 11: Runner State Persistence**

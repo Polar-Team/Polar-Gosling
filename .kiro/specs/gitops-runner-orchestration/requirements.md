@@ -112,7 +112,7 @@ The Polar Gosling GitOps Runner Orchestration system is a comprehensive platform
 
 1. THE MotherGoose_Server SHALL deploy serverless containers to Yandex Cloud Functions or AWS Lambda
 2. THE Serverless_Runner SHALL have a maximum execution time of 60 minutes
-3. WHEN deploying a serverless runner, THE MotherGoose_Server SHALL inject the Gosling CLI tool
+3. WHEN deploying a serverless runner, THE container image should have pre-installed gosling binary.
 4. THE Serverless_Runner SHALL execute the Gosling CLI tool to set up the GitLab runner agent
 5. THE Serverless_Runner SHALL register with GitLab and execute the assigned job
 6. WHEN a serverless runner completes or times out, THE MotherGoose_Server SHALL clean up resources

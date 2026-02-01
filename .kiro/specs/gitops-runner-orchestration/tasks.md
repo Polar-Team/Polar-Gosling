@@ -2,7 +2,20 @@
 
 ## Overview
 
-This implementation plan breaks down the GitOps Runner Orchestration system into discrete, manageable tasks. The system will be built incrementally, with each task building on previous work.
+This implementation plan breaks down the GitOps Runner Orchestration system into discrete, manageable tasks. The system will be built incrementally, with each task building on previous work. The implementation follows a true GitOps architecture where the Nest Git repository is the single source of truth, with MotherGoose using OpenTofu (not cloud SDKs) for ALL runner deployment.
+
+## Critical Architecture Notes
+
+- **Bootstrap Phase (One-Time)**: Gosling CLI uses Go SDKs to deploy MotherGoose, UglyFox, databases, queues (one-time setup)
+- **System Triggers (Internal)**: MotherGoose uses Python SDKs to create cloud triggers for internal operations (Timer Triggers, EventBridge)
+- **ALL Runners (Eggs + Jobs)**: MotherGoose uses OpenTofu with Jinja2 templates for ALL runner deployment (both Egg runners and Job runners)
+- **Jobs Folder**: Creates GitLab scheduled pipelines + runner tokens + webhooks for Nest repo; when pipeline fires → GitLab webhook → MotherGoose → Celery → OpenTofu (same as Eggs)
+- **Job Runner Constraints**: 10-minute time limit (vs 60 minutes for Egg serverless runners), cannot use Rift servers
+- **Gosling CLI Status**: Uses MotherGoose API client, NOT direct database access
+- **Development Workflow**: All new features developed in "dev-new-features" worktree ONLY
+- **Validation**: All implementations must pass `make mg-tox-all` from "dev-new-features" root before completion
+- **Dependency Management**: Use `uv` for Python package management (`uv sync --all-groups`, `uv run pytest`)
+- **Test Execution**: Agent must wait for test completion (YDB static port mapping requires serialized execution)
 
 ## Tasks
 
@@ -22,23 +35,24 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Support secret URI parsing (yc-lockbox://, aws-sm://, vault://)
   - _Requirements: 1.6, 1.7, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9_
 
-- [x] 2.1 Write property test for Fly parser round-trip
+- [x]* 2.1 Write property test for Fly parser round-trip
   - **Property 1: Fly Parser Round-Trip Consistency**
   - **Validates: Requirements 2.1, 2.4**
 
-- [x] 2.2 Write property test for type error detection
+- [x]* 2.2 Write property test for type error detection
   - **Property 2: Fly Parser Type Error Detection**
   - **Validates: Requirements 2.5**
 
-- [x] 2.3 Write property test for nested block support
+- [x]* 2.3 Write property test for nested block support
   - **Property 3: Fly Parser Nested Block Support**
   - **Validates: Requirements 2.6**
 
-- [x] 2.4 Write property test for variable interpolation
+
+- [x]* 2.4 Write property test for variable interpolation
   - **Property 4: Fly Parser Variable Interpolation**
   - **Validates: Requirements 2.7**
 
-- [x] 2.5 Write property test for EggsBucket support
+- [x]* 2.5 Write property test for EggsBucket support
   - **Property 4a: Fly Parser EggsBucket Support**
   - **Validates: Requirements 1.6, 1.7, 2.8**
 
@@ -49,15 +63,15 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Implement `validate` command for .fly files
   - _Requirements: 3.2, 3.3, 3.4, 3.5, 3.6_
 
-- [x] 3.1 Write property test for Nest initialization structure
+- [x]* 3.1 Write property test for Nest initialization structure
   - **Property 5: Nest Initialization Structure**
   - **Validates: Requirements 3.3**
 
-- [x] 3.2 Write property test for configuration validation
+- [x]* 3.2 Write property test for configuration validation
   - **Property 6: Egg Configuration Validation**
   - **Validates: Requirements 3.6**
 
-- [x] 3.3 Write property test for CLI mode equivalence
+- [x]* 3.3 Write property test for CLI mode equivalence
   - **Property 7: CLI Mode Equivalence**
   - **Validates: Requirements 3.7**
 
@@ -68,9 +82,9 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Implement .fly to SDK conversion logic
   - _Requirements: 3.9, 3.10, 9.1, 9.2, 9.3_
 
-- [x] 4.1 Write property test for Fly to Cloud SDK conversion
+- [x]* 4.1 Write property test for Fly to Cloud SDK conversion
   - **Property 8: Fly to Cloud SDK Conversion**
-  - **Validates: Requirements 3.9, 9.3_
+  - **Validates: Requirements 3.9, 9.3**
 
 - [x] 5. Gosling CLI - Deployment Commands
   - Implement `deploy` command with dry-run support
@@ -94,13 +108,14 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Remove PlanStore interface and implementations (dynamodb_store.go, ydb_store.go) from internal/storage
   - _Requirements: 10.6, 10.7_
 
-- [x] 5.3 Write property test for dry-run non-modification
+- [x]* 5.3 Write property test for dry-run non-modification
   - **Property 24: Dry-Run Non-Modification**
   - **Validates: Requirements 10.8**
 
-- [x] 5.4 Write property test for deployment rollback
+- [x]* 5.4 Write property test for deployment rollback
   - **Property 25: Deployment Rollback**
   - **Validates: Requirements 10.9**
+
 
 - [x] 6. Checkpoint - Gosling CLI Core Functionality
   - All Gosling CLI tests pass
@@ -138,7 +153,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Implement connection pooling for YDB and DynamoDB
   - _Requirements: 4.6, 14.1, 14.2, 14.3, 14.4, 14.5, 14.6, 14.7_
 
-- [x] 9.4 Complete deployment_plans table implementation
+- [x] 9.1 Complete deployment_plans table implementation
   - Create DeploymentPlan Pydantic model in app/model/runners_models.py
   - Create DeploymentPlansTableYDB dataclass with proper schema
   - Add deployment_plans table to RunnerModelYDB.tables list
@@ -147,7 +162,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Add to_storage_dict() method for DeploymentPlan model
   - _Requirements: 14.3_
 
-- [x] 9.5 Implement runner queries by egg_name
+- [x] 9.2 Implement runner queries by egg_name
   - Add list_runners_by_egg(egg_name: str) method to RunnerService
   - Query runners table filtering by egg_name column
   - Return list of Runner objects for the specified egg
@@ -155,7 +170,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Add unit tests for runner queries by egg_name
   - _Requirements: 4.6, 14.1_
 
-- [x] 9.6 Configure database schema injection
+- [x] 9.3 Configure database schema injection
   - Create get_ydb_schema() function in app/core/config.py
   - Read YDB configuration from environment variables
   - Initialize YDB connection on application startup
@@ -164,7 +179,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Add configuration validation and error handling
   - _Requirements: 14.1_
 
-- [x] 9.7 Add Git commit tracking to egg configurations
+- [x] 9.4 Add Git commit tracking to egg configurations
   - Update create_or_update_egg endpoint to accept git_commit parameter
   - Modify EggConfigRequest schema to include optional git_commit field
   - Update Git sync task to pass actual commit hash when upserting eggs
@@ -172,18 +187,16 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Add validation to ensure git_commit is a valid SHA hash
   - _Requirements: 12.6, 14.3_
 
-- [x] 9.1 Write property test for runner state persistence
 
+- [x]* 9.5 Write property test for runner state persistence
   - **Property 11: Runner State Persistence**
   - **Validates: Requirements 4.6, 14.1**
 
-- [x] 9.2 Write property test for database state recovery
-
+- [x]* 9.6 Write property test for database state recovery
   - **Property 31: Database State Recovery**
   - **Validates: Requirements 14.6**
 
-- [x] 9.3 Write property test for database transaction atomicity
-
+- [x]* 9.7 Write property test for database transaction atomicity
   - **Property 32: Database Transaction Atomicity**
   - **Validates: Requirements 14.7**
 
@@ -226,20 +239,18 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Include webhook router in main.py (currently missing)
   - _Requirements: 4.1, 4.2, 11.2, 16.1_
 
-- [x] 13.1 Write property test for webhook event matching
-
+- [x]* 13.1 Write property test for webhook event matching
   - **Property 9: Webhook Event Matching**
   - **Validates: Requirements 4.3**
 
-- [x] 13.2 Write property test for GitLab webhook event support
-
+- [x]* 13.2 Write property test for GitLab webhook event support
   - **Property 26: GitLab Webhook Event Support**
   - **Validates: Requirements 11.2**
 
-- [x] 13.3 Write property test for webhook authentication
-
+- [x]* 13.3 Write property test for webhook authentication
   - **Property 33: Webhook Authentication**
   - **Validates: Requirements 16.1**
+
 
 - [x] 14. MotherGoose Backend - Runner Orchestration
   - Implement runner type determination logic (serverless vs VM)
@@ -249,8 +260,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Implement runner provisioning workflow
   - _Requirements: 4.4, 4.5, 10.6, 10.7, 11.3_
 
-- [x] 14.1 Write property test for runner type determination
-
+- [x]* 14.1 Write property test for runner type determination
   - **Property 10: Runner Type Determination**
   - **Validates: Requirements 4.4**
 
@@ -264,39 +274,31 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Integrate secret retrieval into Egg configuration processing
   - _Requirements: 16.7, 16.8, 16.9, 16.10, 16.11, 16.12, 17.1, 17.2, 17.3_
 
-- [x] 15.1 Write property test for secret URI parsing
-
+- [x]* 15.1 Write property test for secret URI parsing
   - **Property 4b: Secret URI Parsing**
   - **Validates: Requirements 2.9, 16.8**
 
-- [x] 15.2 Write property test for secret masking in logs
-
+- [x]* 15.2 Write property test for secret masking in logs
   - **Property 4c: Secret Masking in Logs**
   - **Validates: Requirements 16.9**
 
-- [x] 15.3 Write property test for secret retrieval from Yandex Cloud Lockbox
-
+- [x]* 15.3 Write property test for secret retrieval from Yandex Cloud Lockbox
   - **Property 36: Secret Retrieval from Yandex Cloud Lockbox**
   - **Validates: Requirements 16.7, 17.1**
 
-- [x] 15.4 Write property test for secret retrieval from AWS Secrets Manager
-
+- [x]* 15.4 Write property test for secret retrieval from AWS Secrets Manager
   - **Property 37: Secret Retrieval from AWS Secrets Manager**
   - **Validates: Requirements 16.7, 17.2**
 
-- [x] 15.5 Write property test for secret cache TTL
-
+- [x]* 15.5 Write property test for secret cache TTL
   - **Property 38: Secret Cache TTL**
   - **Validates: Requirements 16.11**
 
-- [x] 15.6 Write property test for invalid secret reference error
-
+- [x]* 15.6 Write property test for invalid secret reference error
   - **Property 39: Invalid Secret Reference Error**
   - **Validates: Requirements 16.12**
 
-
-- [x] 15.7 Write property test for secret rotation propagation
-
+- [x]* 15.7 Write property test for secret rotation propagation
   - **Property 40: Secret Rotation Propagation**
   - **Validates: Requirements 17.6**
 
@@ -309,7 +311,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Note: OpenTofu is used for ALL runner deployment (both Egg runners and Job runners)
   - _Requirements: 4.5, 5.3, 6.1_
 
-- [ ] 17. MotherGoose Backend - Serverless Runner Deployment
+- [x] 17. MotherGoose Backend - Serverless Runner Deployment
   - Implement Serverless deployment using Compute Module
   - Implement serverless container deployment to Yandex Cloud Serverless
   - Implement serverless container deployment to AWS Lambda Fargate
@@ -318,7 +320,8 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Implement resource cleanup after completion
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7_
 
-- [ ] 17.1 Implement OpenTofu template rendering for runner deployment
+
+- [x] 17.1 Implement OpenTofu template rendering for runner deployment
   - Extend `OpenTofuConfiguration.__create_tofu_configuration_from_templates()` to render additional templates
   - Implement `tofu_providers_tf.j2` → `providers.tf` rendering
     - Render provider blocks with settings from Egg configuration
@@ -346,11 +349,11 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
     - `vm_key_algorithm` and `vm_key_rsa_bits` for SSH key generation
   - _Requirements: 5.1, 5.3, 6.1_
 
-- [ ]* 17.2 Write property test for serverless runner timeout
+- [x]* 17.2 Write property test for serverless runner timeout
   - **Property 12: Serverless Runner Timeout Enforcement**
   - **Validates: Requirements 5.2**
 
-- [ ]* 17.3 Write property test for serverless runner cleanup
+- [x]* 17.3 Write property test for serverless runner cleanup
   - **Property 13: Serverless Runner Cleanup**
   - **Validates: Requirements 5.6**
 
@@ -362,7 +365,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7_
 
 - [ ]* 18.1 Write property test for Apex pool size limits
-  - **Property 14: Apex pool Size Limits**
+  - **Property 14: Apex Pool Size Limits**
   - **Validates: Requirements 6.7**
 
 - [ ]* 18.2 Write property test for Nadir to Apex promotion
@@ -377,13 +380,15 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Ensure all MotherGoose tests pass
   - Verify webhook processing works
   - Test runner deployment to both clouds
+  - Run `make mg-tox-all` from dev-new-features root
   - Ask the user if questions arise
 
 - [ ] 20. UglyFox Backend - Setup and Database Integration
   - Set up Celery worker structure in new UglyFox project
   - Implement async database operations
-  - Create Celery Beat for scheduled tasks
+  - Configure cloud triggers for scheduled tasks (no Celery Beat in serverless)
   - _Requirements: 7.1_
+
 
 - [ ] 21. UglyFox Backend - Policy Engine
   - Implement policy evaluation engine
@@ -462,6 +467,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - **Property 28: Egg Config Update Propagation**
   - **Validates: Requirements 12.6**
 
+
 - [ ] 27. Self-Management Jobs
   - Implement job scheduling with cron expressions (GitLab scheduled pipelines)
   - Create secret rotation job
@@ -528,7 +534,19 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Verify all components work together
   - Test failover scenarios
   - Perform load testing
+  - Run `make mg-tox-all` from dev-new-features root
   - Ask the user if questions arise
+
+
+## Additional Properties for Comprehensive Coverage
+
+- [ ]* 34. Write property test for EggsBucket repository isolation
+  - **Property 41: EggsBucket Repository Isolation**
+  - **Validates: Requirements 1.6, 1.7**
+
+- [ ]* 35. Write property test for EggsBucket shared configuration
+  - **Property 42: EggsBucket Shared Configuration**
+  - **Validates: Requirements 1.6**
 
 ## Notes
 
@@ -539,3 +557,58 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
 - Integration tests use Testcontainers (YDB, DynamoDB via LocalStack, S3 via LocalStack)
 - All Python tests use pytest with async support
 - All Go tests use gopter for property-based testing
+- **CRITICAL**: All implementations in "dev-new-features" worktree must pass `make mg-tox-all` before completion
+- **CRITICAL**: Use `uv` for Python dependency management (`uv sync --all-groups`, `uv run pytest`)
+- **CRITICAL**: Agent must wait for test completion (YDB static port mapping requires serialized execution)
+- **CRITICAL**: Gosling CLI status command uses MotherGoose API client, NOT direct database access
+- **CRITICAL**: OpenTofu is used for ALL runner deployment (Eggs + Jobs), NOT cloud SDKs
+- **CRITICAL**: Jobs folder creates GitLab scheduled pipelines that trigger webhooks → MotherGoose → Celery → OpenTofu (same as Eggs)
+
+## Development Workflow Reminders
+
+1. **Worktree Isolation**: ALL new feature development happens in "dev-new-features" worktree ONLY
+2. **Validation**: Run `make mg-tox-all` from "dev-new-features" root before considering any task complete
+3. **Tox Configuration**: Defined in `pyproject.toml` under `[tool.tox]` section (not separate tox.ini)
+4. **Python Versions**: Tests run on Python 3.10, 3.11, 3.12, and 3.13
+5. **Code Quality**: All code must achieve pylint rating of 10/10
+6. **Line Length**: Maximum 120 characters
+7. **Task Comments**: Use format "# Task N: Brief description" (max 42 chars, no "TODO" keyword)
+8. **Test Execution**: Agent waits for complete test suite execution (no premature termination)
+
+## Architecture Reminders
+
+### Deployment Mechanisms (CRITICAL)
+
+1. **Bootstrap Phase (One-Time)**: Gosling CLI + Go SDKs → Deploy MotherGoose, UglyFox, databases, queues
+2. **System Triggers (Internal)**: MotherGoose + Python SDKs → Create Timer Triggers (YC) / EventBridge (AWS)
+3. **ALL Runners (Eggs + Jobs)**: MotherGoose + OpenTofu + Jinja2 → Deploy ALL runners
+
+### Jobs Folder Flow
+
+Jobs folder creates:
+- GitLab scheduled pipelines for Nest repo
+- GitLab runner tokens for Nest repo
+- GitLab webhooks for Nest repo
+
+When Nest pipeline fires:
+1. GitLab webhook (X-Gitlab-Token) → MotherGoose
+2. MotherGoose → Celery Task (SQS/YMQ)
+3. Celery → OpenTofu (with Jinja2 templates)
+4. OpenTofu → Deploy Runner
+
+**Same flow as Eggs!** No separate "self-runner" system.
+
+### Job Runner Constraints
+
+- **Time Limit**: 10 minutes (vs 60 minutes for Egg serverless runners)
+- **No Rift**: Cannot use Rift servers for caching
+- **Purpose**: Lightweight self-management tasks only (secret rotation, config updates)
+
+### GitOps Architecture
+
+- **Source of Truth**: Nest Git repository (Eggs/, Jobs/, UF/)
+- **Database**: Cache only (runtime state + parsed configs from Git)
+- **Secrets**: NEVER in Git or database, only in Yandex Cloud Lockbox / AWS Secrets Manager
+- **Git Sync**: Every 5 minutes via cloud triggers + immediate on push events
+- **Deploy Keys**: Three SSH keys (mothergoose, uglyfox, selfjobs) stored in secret manager
+

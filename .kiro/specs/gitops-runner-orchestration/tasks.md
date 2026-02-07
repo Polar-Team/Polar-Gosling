@@ -361,7 +361,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - **Property 13: Serverless Runner Cleanup**
   - **Validates: Requirements 5.6**
 
-- [ ] 18. MotherGoose Backend - VM Runner Deployment
+- [x] 18. MotherGoose Backend - VM Runner Deployment
   - Verify existing OpenTofu template rendering for VM runners (already implemented in task 17.1)
   - Implement VM deployment using OpenTofu with Compute Module
   - Create Apex and Nadir pool management logic
@@ -372,15 +372,15 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Note: VM runners use OpenTofu deployment (same as serverless runners), not direct cloud SDK calls
   - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8_
 
-- [ ] 18.1 Write property test for Apex pool size limits
+- [x] 18.1 Write property test for Apex pool size limits
   - **Property 14: Apex Pool Size Limits**
   - **Validates: Requirements 6.7**
 
-- [ ] 18.2 Write property test for Nadir to Apex promotion
+- [x] 18.2 Write property test for Nadir to Apex promotion
   - **Property 15: Nadir to Apex Promotion**
   - **Validates: Requirements 6.5**
 
-- [ ] 18.3 Write property test for Apex to Nadir demotion
+- [x] 18.3 Write property test for Apex to Nadir demotion
   - **Property 16: Apex to Nadir Demotion**
   - **Validates: Requirements 6.6**
 

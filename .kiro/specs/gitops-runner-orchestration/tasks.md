@@ -384,14 +384,14 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - **Property 16: Apex to Nadir Demotion**
   - **Validates: Requirements 6.6**
 
-- [ ] 19. Checkpoint - MotherGoose Core Functionality
+- [x] 19. Checkpoint - MotherGoose Core Functionality
   - Ensure all MotherGoose tests pass
   - Verify webhook processing works
   - Test runner deployment to both clouds
   - Run `make mg-tox-all` from dev-new-features root
   - Ask the user if questions arise
 
-- [ ] 20. UglyFox Backend - Setup and Database Integration
+- [x] 20. UglyFox Backend - Setup and Database Integration
   - Set up Celery worker structure in new UglyFox project
   - Implement async database operations
   - Configure cloud triggers for scheduled tasks (no Celery Beat in serverless)

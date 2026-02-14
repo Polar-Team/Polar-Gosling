@@ -241,7 +241,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Add integration tests with sample .fly files
   - _Requirements: 22.1, 22.2, 22.3, 22.4, 22.5, 22.6, 22.7, 22.8, 22.9, 22.14_
 
-- [-] 12.2 MotherGoose Backend - Update fly_parser to Call Gosling CLI
+- [x] 12.2 MotherGoose Backend - Update fly_parser to Call Gosling CLI
   - Update fly_parser.py to call Gosling CLI binary using subprocess
   - Add GOSLING_CLI_PATH environment variable configuration (default: "gosling")
   - Implement _call_gosling_parse() method to execute Gosling CLI parse command
@@ -255,7 +255,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Add integration tests with real Gosling CLI binary
   - _Requirements: 22.10, 22.11, 22.12, 22.13, 22.15_
 
-- [ ] 12.3 MotherGoose Backend - Binary Version Management System
+- [x] 12.3 MotherGoose Backend - Binary Version Management System
   - Create binary_versions table in database schema (binary_name, version, s3_path, sha256_checksum, is_active, uploaded_at, activated_at)
   - Create BinaryVersion Pydantic model in app/model/runners_models.py
   - Create BinaryVersionService in app/services/binary_version_service.py
@@ -268,7 +268,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Add audit logging for all version changes
   - _Requirements: 23.3, 23.4, 23.8, 23.9, 23.10, 23.11, 23.12, 23.13, 23.16, 23.17, 23.20_
 
-- [ ] 12.4 MotherGoose Backend - Binary Version Management API Endpoints
+- [x] 12.4 MotherGoose Backend - Binary Version Management API Endpoints
   - Create app/routers/binaries.py router
   - Implement GET /admin/binaries endpoint (list all binary versions)
   - Implement GET /admin/binaries/{binary_name}/versions endpoint (list versions for specific binary)
@@ -281,7 +281,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Include binaries router in main.py
   - _Requirements: 23.12, 23.18, 23.19_
 
-- [ ] 12.5 MotherGoose Backend - Gosling CLI Binary Lifecycle Management
+- [x] 12.5 MotherGoose Backend - Gosling CLI Binary Lifecycle Management
   - Create GoslingBinaryManager in app/services/gosling_binary_manager.py
   - Implement download_active_version() method (called on MotherGoose startup)
   - Implement download_and_cache(version: str, local_path: str) method
@@ -293,7 +293,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Update fly_parser.py to use GoslingBinaryManager for binary path resolution
   - _Requirements: 23.1, 23.5, 23.6, 23.7, 23.14, 23.30_
 
-- [ ] 12.6 MotherGoose Backend - GitHub Binary Auto-Download
+- [x] 12.6 MotherGoose Backend - GitHub Binary Auto-Download
   - Create GitHubBinaryDownloader in app/services/github_binary_downloader.py
   - Implement check_latest_gosling_version() method using GitHub API
   - Implement download_gosling_from_github(version: str) method
@@ -304,7 +304,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Store version metadata in binary_versions table
   - _Requirements: 23.21, 23.22, 23.23, 23.24_
 
-- [ ] 12.7 MotherGoose Backend - Per-Egg Binary Version Support
+- [x] 12.7 MotherGoose Backend - Per-Egg Binary Version Support
   - Update EggConfig model to include optional gosling_version and opentofu_version fields
   - Update Egg configuration parsing to extract version requirements
   - Update fly_parser service to use Egg-specific Gosling CLI version if specified
@@ -399,8 +399,10 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Note: OpenTofu is used for ALL runner deployment (both Egg runners and Job runners)
   - _Requirements: 4.5, 5.3, 6.1_
 
-- [x] 17. MotherGoose Backend - Serverless Runner Deployment
-  - Verify existing OpenTofu template rendering for serverless runners
+- [ ] 17. MotherGoose Backend - Serverless Runner Deployment
+  - Implement complete OpenTofu template rendering for runner deployment (all templates: providers.tf, resources.tf, variables.tf, data.tf, .terraformrc)
+  - Implement OpenTofu plan generation and storage in database
+  - Implement OpenTofu apply execution for runner deployment
   - Implement serverless container deployment to Yandex Cloud Serverless Containers
   - Implement serverless container deployment to AWS Lambda (container image support)
   - Create container image build process with pre-installed binaries (Gosling CLI, GitLab Runner Agent)
@@ -410,40 +412,80 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7_
 
 
-- [x] 17.1 Implement OpenTofu template rendering for runner deployment
-  - Extend `OpenTofuConfiguration.__create_tofu_configuration_from_templates()` to render additional templates
+- [ ] 17.1 Implement complete OpenTofu template rendering for runner deployment
+  - Extend `OpenTofuConfiguration.__create_tofu_configuration_from_templates()` to render ALL required templates
   - Implement `tofu_providers_tf.j2` → `providers.tf` rendering
     - Render provider blocks with settings from Egg configuration
-    - Support Yandex Cloud provider configuration
-    - Support AWS provider configuration
+    - Support Yandex Cloud provider configuration (yandex provider with token, cloud_id, folder_id)
+    - Support AWS provider configuration (aws provider with region, access_key, secret_key)
+    - Include provider version constraints
   - Implement `tofu_resources_tf.j2` → `resources.tf` rendering
-    - Render TLS private key resource for SSH access
-    - Render local_file resource for SSH key storage
-    - Render worker module block with dynamic source (git or registry)
-    - Render rift module block (conditional, based on tofu_rift_required)
-    - Support for_each iteration over worker/rift instances
-    - Support cloud-init injection for VM chassis
+    - Render TLS private key resource for SSH access (tls_private_key)
+    - Render local_file resource for SSH key storage (local_file for private/public keys)
+    - Render worker module block with dynamic source (module "worker" with source from git or registry)
+    - Render rift module block (conditional, based on tofu_rift_required flag)
+    - Support for_each iteration over worker instances (for_each = var.tofu_worker_instances)
+    - Support for_each iteration over rift instances (for_each = var.tofu_rift_instances)
+    - Support cloud-init injection for VM chassis (cloud_init_data passed to module)
+    - Render serverless container resources (yandex_serverless_container or aws_lambda_function)
   - Implement `tofu_variables_tf.j2` → `variables.tf` rendering
-    - Render tofu_worker_instances variable definition
-    - Render tofu_rift_instances variable definition (conditional)
-  - Implement `tofu_data_tf.j2` → `data.tf` rendering (currently empty, prepare for future use)
+    - Render tofu_worker_instances variable definition (type = map(object({...})))
+    - Render tofu_rift_instances variable definition (conditional, type = map(object({...})))
+    - Include variable descriptions and default values
+  - Implement `tofu_data_tf.j2` → `data.tf` rendering
+    - Prepare for future data source definitions (currently empty template)
+    - Add placeholder comments for common data sources (AMIs, images, availability zones)
   - Implement `tofu_rc.j2` → `.terraformrc` or `.tofurc` rendering
-    - Configure provider installation methods
-    - Configure plugin cache directory
+    - Configure provider installation methods (network_mirror or direct)
+    - Configure plugin cache directory (plugin_cache_dir = "/tmp/tofu-plugins")
+    - Configure provider source addresses
   - Update `TofuSetting` dataclass to include new configuration options:
-    - `worker_module_source` (git URL or registry URL with version)
-    - `rift_module_source` (optional, for Rift server deployment)
-    - `worker_instances` (map of instance configurations)
-    - `rift_instances` (optional map of Rift instance configurations)
-    - `vm_key_algorithm` and `vm_key_rsa_bits` for SSH key generation
+    - `worker_module_source` (str, git URL or registry URL with version)
+    - `rift_module_source` (Optional[str], for Rift server deployment)
+    - `worker_instances` (dict, map of instance configurations with name, type, resources)
+    - `rift_instances` (Optional[dict], map of Rift instance configurations)
+    - `vm_key_algorithm` (str, default "RSA" for SSH key generation)
+    - `vm_key_rsa_bits` (int, default 4096 for SSH key generation)
+    - `cloud_init_template` (Optional[str], path to cloud-init template)
   - _Requirements: 5.1, 5.3, 6.1_
 
-- [x] 17.2 Write property test for serverless runner timeout
+- [ ] 17.2 Implement OpenTofu plan generation and storage
+  - Create `generate_plan()` method in OpenTofuConfiguration class
+  - Execute `tofu plan -out=plan.tfplan` to generate binary plan file
+  - Read binary plan file and store in database (deployment_plans table)
+  - Store plan metadata: egg_name, plan_id, git_commit, created_at, plan_binary
+  - Implement plan validation before storage (check for errors, warnings)
+  - Add error handling for plan generation failures
+  - Log plan generation events to audit_logs table
+  - _Requirements: 5.3, 14.3_
 
+- [ ] 17.3 Implement OpenTofu apply execution
+  - Create `apply_plan()` method in OpenTofuConfiguration class
+  - Retrieve stored plan from database by plan_id
+  - Write plan binary to temporary file
+  - Execute `tofu apply plan.tfplan` to deploy runner
+  - Capture apply output and store in database (deployment_history table)
+  - Update runner state in database (provisioning → active)
+  - Implement rollback on apply failure (destroy resources, update state to failed)
+  - Add error handling for apply failures with detailed error messages
+  - Log apply execution events to audit_logs table
+  - _Requirements: 5.3, 5.4, 14.1_
+
+- [ ] 17.4 Integrate template rendering with Celery task workflow
+  - Update `deploy_runner` Celery task to call template rendering methods
+  - Call `__create_tofu_configuration_from_templates()` with all templates
+  - Call `generate_plan()` after template rendering
+  - Call `apply_plan()` after plan storage
+  - Update runner state transitions: queued → provisioning → active
+  - Implement error handling at each step with state rollback
+  - Add retry logic for transient failures (network errors, API rate limits)
+  - _Requirements: 4.5, 5.3, 5.4_
+
+- [ ] 17.5 Write property test for serverless runner timeout
   - **Property 12: Serverless Runner Timeout Enforcement**
   - **Validates: Requirements 5.2**
 
-- [x] 17.3 Write property test for serverless runner cleanup
+- [ ] 17.6 Write property test for serverless runner cleanup
   - **Property 13: Serverless Runner Cleanup**
   - **Validates: Requirements 5.6**
 

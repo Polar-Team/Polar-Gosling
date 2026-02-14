@@ -229,6 +229,92 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Create sync history audit trail
   - _Requirements: 4.1, 4.2, 12.1, 12.2, 12.3, 12.6_
 
+- [x] 12.1 Gosling CLI - Implement Parse Command with JSON Output
+  - Create `parse` command in internal/cli/parse.go
+  - Accept .fly file path as command argument
+  - Add `--type` flag to specify configuration type (egg, job, uglyfox, eggsbucket)
+  - Parse the .fly file using existing parser.ParseAndValidate()
+  - Convert parsed Config to JSON with snake_case field names
+  - Output JSON to stdout on success
+  - Output error details to stderr and exit with non-zero code on failure
+  - Add unit tests for parse command
+  - Add integration tests with sample .fly files
+  - _Requirements: 22.1, 22.2, 22.3, 22.4, 22.5, 22.6, 22.7, 22.8, 22.9, 22.14_
+
+- [-] 12.2 MotherGoose Backend - Update fly_parser to Call Gosling CLI
+  - Update fly_parser.py to call Gosling CLI binary using subprocess
+  - Add GOSLING_CLI_PATH environment variable configuration (default: "gosling")
+  - Implement _call_gosling_parse() method to execute Gosling CLI parse command
+  - Parse JSON output from Gosling CLI and convert to Python dictionaries
+  - Implement error handling with fallback to placeholder data on failure
+  - Log warnings when falling back to placeholder data
+  - Update parse_egg() to call Gosling CLI with --type=egg
+  - Update parse_job() to call Gosling CLI with --type=job
+  - Update parse_uf_config() to call Gosling CLI with --type=uglyfox
+  - Add unit tests with mocked subprocess calls
+  - Add integration tests with real Gosling CLI binary
+  - _Requirements: 22.10, 22.11, 22.12, 22.13, 22.15_
+
+- [ ] 12.3 MotherGoose Backend - Binary Version Management System
+  - Create binary_versions table in database schema (binary_name, version, s3_path, sha256_checksum, is_active, uploaded_at, activated_at)
+  - Create BinaryVersion Pydantic model in app/model/runners_models.py
+  - Create BinaryVersionService in app/services/binary_version_service.py
+  - Implement list_versions(binary_name: str) method
+  - Implement get_active_version(binary_name: str) method
+  - Implement upload_version(binary_name, version, file, checksum) method
+  - Implement activate_version(binary_name, version) method (deactivates previous active version)
+  - Implement download_from_s3(binary_name, version, local_path) method
+  - Implement verify_checksum(file_path, expected_checksum) method
+  - Add audit logging for all version changes
+  - _Requirements: 23.3, 23.4, 23.8, 23.9, 23.10, 23.11, 23.12, 23.13, 23.16, 23.17, 23.20_
+
+- [ ] 12.4 MotherGoose Backend - Binary Version Management API Endpoints
+  - Create app/routers/binaries.py router
+  - Implement GET /admin/binaries endpoint (list all binary versions)
+  - Implement GET /admin/binaries/{binary_name}/versions endpoint (list versions for specific binary)
+  - Implement GET /admin/binaries/{binary_name}/active endpoint (get active version)
+  - Implement POST /admin/binaries/upload endpoint (upload new binary version with multipart/form-data)
+  - Implement POST /admin/binaries/{binary_name}/activate endpoint (activate specific version)
+  - Implement POST /admin/binaries/{binary_name}/rollback endpoint (rollback to previous version)
+  - Add authentication and authorization (admin-only endpoints)
+  - Add request validation (binary_name must be "gosling" or "opentofu")
+  - Include binaries router in main.py
+  - _Requirements: 23.12, 23.18, 23.19_
+
+- [ ] 12.5 MotherGoose Backend - Gosling CLI Binary Lifecycle Management
+  - Create GoslingBinaryManager in app/services/gosling_binary_manager.py
+  - Implement download_active_version() method (called on MotherGoose startup)
+  - Implement download_and_cache(version: str, local_path: str) method
+  - Implement verify_and_activate(version: str) method
+  - Store downloaded binaries in /tmp/gosling/{version}/gosling with version-based paths
+  - Update GOSLING_CLI_PATH dynamically when version changes
+  - Implement cleanup of old cached versions (keep last 3 versions)
+  - Add startup hook in main.py to download active Gosling CLI binary
+  - Update fly_parser.py to use GoslingBinaryManager for binary path resolution
+  - _Requirements: 23.1, 23.5, 23.6, 23.7, 23.14, 23.30_
+
+- [ ] 12.6 MotherGoose Backend - GitHub Binary Auto-Download
+  - Create GitHubBinaryDownloader in app/services/github_binary_downloader.py
+  - Implement check_latest_gosling_version() method using GitHub API
+  - Implement download_gosling_from_github(version: str) method
+  - Implement check_latest_opentofu_version() method (integrate with existing OpenTofuUpdateGithub)
+  - Create periodic task (Celery) to check for new versions daily
+  - Send notifications (log warnings) when new versions are available
+  - Automatically download new versions to S3 but do NOT activate
+  - Store version metadata in binary_versions table
+  - _Requirements: 23.21, 23.22, 23.23, 23.24_
+
+- [ ] 12.7 MotherGoose Backend - Per-Egg Binary Version Support
+  - Update EggConfig model to include optional gosling_version and opentofu_version fields
+  - Update Egg configuration parsing to extract version requirements
+  - Update fly_parser service to use Egg-specific Gosling CLI version if specified
+  - Update OpenTofu deployment to use Egg-specific OpenTofu version if specified
+  - Implement version resolution logic (Egg-specific > Active > Fail)
+  - Add validation to ensure required versions exist in binary_versions table
+  - Fail deployment with descriptive error if required version is unavailable
+  - Add unit tests for version resolution logic
+  - _Requirements: 23.25, 23.26, 23.27, 23.28, 23.29_
+
 - [x] 13. MotherGoose Backend - Webhook Handling
   - Implement POST /webhooks/gitlab endpoint in FastAPI (create app/routers/webhooks.py)
   - Create webhook authentication using X-Gitlab-Token header (per-Egg shared secrets)
@@ -382,7 +468,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
 
 - [x] 18.3 Write property test for Apex to Nadir demotion
   - **Property 16: Apex to Nadir Demotion**
-  - **Validates: Requirements 6.6**
+  <!-- - **Validates: Requirements 6.6** -->
 
 - [x] 19. Checkpoint - MotherGoose Core Functionality
   - Ensure all MotherGoose tests pass
@@ -395,6 +481,51 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Set up Celery worker structure in new UglyFox project
   - Implement async database operations
   - Configure cloud triggers for scheduled tasks (no Celery Beat in serverless)
+  - _Requirements: 7.1_
+
+- [x] 20.1 Copy MotherGoose database modules to UglyFox
+  - Copy app/db/ydb_connection.py from MotherGoose to UglyFox (AsyncYDBOperations class)
+  - Copy app/db/manage_db.py from MotherGoose to UglyFox (AsyncYDBFunctionsCollections)
+  - Copy app/schema/ydb_schemas.py from MotherGoose to UglyFox
+  - Copy app/schema/dynamodb_schemas.py from MotherGoose to UglyFox
+  - Copy app/model/runners_models.py from MotherGoose to UglyFox (for table schemas)
+  - Copy app/model/audit_models.py from MotherGoose to UglyFox
+  - Copy app/util/base_logging.py from MotherGoose to UglyFox (for @logged decorator)
+  - Create app/db/__init__.py and app/schema/__init__.py if missing
+  - Verify all dependencies are satisfied (ydb, aioboto3, pydantic, accessify)
+  - Verify all table schemas are available (runners, egg_configs, audit_logs, runner_metrics)
+  - _Requirements: 7.1, 14.1, 14.5, 14.6_
+
+- [x] 20.2 Implement UglyFox database client using MotherGoose infrastructure
+  - Refactor YDBDatabaseClient to use AsyncYDBOperations from MotherGoose
+  - Refactor DynamoDBDatabaseClient to use MotherGoose DynamoDB operations
+  - Implement get_runner_by_id() using AsyncYDBFunctionsCollections.select_with_parameters
+  - Implement list_runners_by_state() using AsyncYDBFunctionsCollections.select_with_parameters
+  - Implement list_runners_by_egg() using AsyncYDBFunctionsCollections.select_with_parameters
+  - Implement get_runner_metrics() using AsyncYDBFunctionsCollections.select_with_parameters
+  - Implement update_runner_state() using AsyncYDBFunctionsCollections.update_with_parameters
+  - Implement create_audit_log() using AsyncYDBFunctionsCollections.insert_with_parameters
+  - Implement get_egg_config() using AsyncYDBFunctionsCollections.select_with_parameters
+  - Remove all TODO placeholders and replace with actual MotherGoose database calls
+  - _Requirements: 7.1, 14.1, 14.5, 14.6_
+
+- [x] 20.3 Verify and test Celery app initialization for UglyFox
+  - Verify app/core/celery_app.py configuration is correct
+  - Test Celery worker startup with: celery -A app.celery_worker worker --loglevel=info -Q uglyfox
+  - Verify task routing to uglyfox queue works
+  - Verify task autodiscovery finds all tasks
+  - Test debug_task execution
+  - Verify connection to Redis/SQS/YMQ broker
+  - _Requirements: 7.1_
+
+- [x] 20.4 Add unit tests for UglyFox database clients
+  - Create tests/test_ydb_database_client.py with async tests
+  - Create tests/test_dynamodb_database_client.py with async tests
+  - Test all database operations with mock YDB/DynamoDB
+  - Test connection and disconnection
+  - Test error handling and retries
+  - Test query result parsing
+  - Use pytest-asyncio for async test support
   - _Requirements: 7.1_
 
 

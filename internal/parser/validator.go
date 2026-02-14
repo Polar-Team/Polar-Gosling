@@ -81,10 +81,14 @@ func (v *Validator) validateBlock(block *Block) {
 	switch block.Type {
 	case "egg":
 		v.validateEggBlock(block)
+	case "eggsbucket":
+		v.validateEggsBucketBlock(block)
 	case "job":
 		v.validateJobBlock(block)
 	case "uglyfox":
 		v.validateUglyFoxBlock(block)
+	case "mothergoose":
+		v.validateMotherGooseBlock(block)
 	default:
 		v.result.AddError(block.Position, "type",
 			fmt.Sprintf("unknown block type: %s", block.Type))
@@ -150,6 +154,109 @@ func (v *Validator) validateEggBlock(block *Block) {
 	// Validate optional environment block
 	if envBlock, ok := block.GetBlock("environment"); ok {
 		v.validateEnvironmentBlock(envBlock)
+	}
+}
+
+// validateEggsBucketBlock validates an eggsbucket configuration block
+func (v *Validator) validateEggsBucketBlock(block *Block) {
+	// EggsBucket must have exactly one label (the name)
+	if len(block.Labels) != 1 {
+		v.result.AddError(block.Position, "labels",
+			"eggsbucket block must have exactly one label (the bucket name)")
+		return
+	}
+
+	// Validate bucket name format (alphanumeric, hyphens, underscores)
+	bucketName := block.Labels[0]
+	if !isValidIdentifier(bucketName) {
+		v.result.AddError(block.Position, "name",
+			fmt.Sprintf("invalid eggsbucket name %q: must contain only alphanumeric characters, hyphens, and underscores", bucketName))
+	}
+
+	// Validate required attribute: type
+	typeVal, ok := block.GetAttribute("type")
+	if !ok {
+		v.result.AddError(block.Position, "type", "eggsbucket block must have a 'type' attribute")
+	} else {
+		typeStr, err := typeVal.AsString()
+		if err != nil {
+			v.result.AddError(typeVal.Position, "type", "type must be a string")
+		} else if typeStr != "vm" && typeStr != "serverless" {
+			v.result.AddError(typeVal.Position, "type",
+				fmt.Sprintf("type must be 'vm' or 'serverless', got %q", typeStr))
+		}
+	}
+
+	// Validate required nested blocks
+	v.validateRequiredBlock(block, "cloud")
+	v.validateRequiredBlock(block, "resources")
+	v.validateRequiredBlock(block, "runner")
+	v.validateRequiredBlock(block, "repositories")
+
+	// Validate cloud block
+	if cloudBlock, ok := block.GetBlock("cloud"); ok {
+		v.validateCloudBlock(cloudBlock)
+	}
+
+	// Validate resources block
+	if resourcesBlock, ok := block.GetBlock("resources"); ok {
+		v.validateResourcesBlock(resourcesBlock)
+	}
+
+	// Validate runner block
+	if runnerBlock, ok := block.GetBlock("runner"); ok {
+		v.validateRunnerBlock(runnerBlock)
+	}
+
+	// Validate repositories block
+	if repositoriesBlock, ok := block.GetBlock("repositories"); ok {
+		v.validateRepositoriesBlock(repositoriesBlock)
+	}
+
+	// Validate optional environment block
+	if envBlock, ok := block.GetBlock("environment"); ok {
+		v.validateEnvironmentBlock(envBlock)
+	}
+}
+
+// validateRepositoriesBlock validates a repositories block within an eggsbucket
+func (v *Validator) validateRepositoriesBlock(block *Block) {
+	// Repositories block must contain at least one repo block
+	repoBlocks := block.GetBlocks("repo")
+	if len(repoBlocks) == 0 {
+		v.result.AddError(block.Position, "repo",
+			"repositories block must contain at least one 'repo' block")
+		return
+	}
+
+	// Validate each repo block
+	for _, repoBlock := range repoBlocks {
+		v.validateRepoBlock(&repoBlock)
+	}
+}
+
+// validateRepoBlock validates a single repo block within repositories
+func (v *Validator) validateRepoBlock(block *Block) {
+	// Repo must have exactly one label (the repo name)
+	if len(block.Labels) != 1 {
+		v.result.AddError(block.Position, "labels",
+			"repo block must have exactly one label (the repo name)")
+		return
+	}
+
+	// Validate repo name
+	repoName := block.Labels[0]
+	if !isValidIdentifier(repoName) {
+		v.result.AddError(block.Position, "name",
+			fmt.Sprintf("invalid repo name %q: must contain only alphanumeric characters, hyphens, and underscores", repoName))
+	}
+
+	// Validate required nested block: gitlab
+	v.validateRequiredBlock(block, "gitlab")
+
+	// Validate gitlab block
+	if gitlabBlock, ok := block.GetBlock("gitlab"); ok {
+		v.validateGitLabBlock(gitlabBlock)
 	}
 }
 
@@ -232,6 +339,30 @@ func (v *Validator) validateUglyFoxBlock(block *Block) {
 	if policiesBlock, ok := block.GetBlock("policies"); ok {
 		v.validatePoliciesBlock(policiesBlock)
 	}
+}
+
+// validateMotherGooseBlock validates a mothergoose configuration block
+func (v *Validator) validateMotherGooseBlock(block *Block) {
+	// MotherGoose should have no labels
+	if len(block.Labels) > 0 {
+		v.result.AddError(block.Position, "labels",
+			"mothergoose block should not have labels")
+	}
+
+	// Validate required nested blocks
+	v.validateRequiredBlock(block, "api_gateway")
+	v.validateRequiredBlock(block, "fastapi_app")
+	v.validateRequiredBlock(block, "celery_workers")
+	v.validateRequiredBlock(block, "uglyfox_workers")
+	v.validateRequiredBlock(block, "message_queues")
+	v.validateRequiredBlock(block, "triggers")
+	v.validateRequiredBlock(block, "database")
+	v.validateRequiredBlock(block, "storage")
+	v.validateRequiredBlock(block, "service_accounts")
+
+	// Note: Detailed validation of nested blocks would be added here
+	// For now, we just validate that the required blocks exist
+	// Full validation would check specific attributes within each block
 }
 
 // validateRunnersConditionBlock validates a runners_condition configuration block

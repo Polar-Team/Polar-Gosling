@@ -261,11 +261,11 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Create BinaryVersionService in app/services/binary_version_service.py
   - Implement list_versions(binary_name: str) method
   - Implement get_active_version(binary_name: str) method
-  - Implement upload_version(binary_name, version, file, checksum) method
+  - Implement upload_version(binary_name, version, file, checksum) method (writes directly to mounted S3 path)
   - Implement activate_version(binary_name, version) method (deactivates previous active version)
-  - Implement download_from_s3(binary_name, version, local_path) method
   - Implement verify_checksum(file_path, expected_checksum) method
   - Add audit logging for all version changes
+  - Note: Uses s3fs to mount S3 bucket as filesystem, no explicit download/upload needed
   - _Requirements: 23.3, 23.4, 23.8, 23.9, 23.10, 23.11, 23.12, 23.13, 23.16, 23.17, 23.20_
 
 - [x] 12.4 MotherGoose Backend - Binary Version Management API Endpoints
@@ -273,7 +273,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Implement GET /admin/binaries endpoint (list all binary versions)
   - Implement GET /admin/binaries/{binary_name}/versions endpoint (list versions for specific binary)
   - Implement GET /admin/binaries/{binary_name}/active endpoint (get active version)
-  - Implement POST /admin/binaries/upload endpoint (upload new binary version with multipart/form-data)
+  - Implement POST /admin/binaries/upload endpoint (upload new binary version with multipart/form-data, writes to mounted S3 path)
   - Implement POST /admin/binaries/{binary_name}/activate endpoint (activate specific version)
   - Implement POST /admin/binaries/{binary_name}/rollback endpoint (rollback to previous version)
   - Add authentication and authorization (admin-only endpoints)
@@ -281,27 +281,29 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Include binaries router in main.py
   - _Requirements: 23.12, 23.18, 23.19_
 
-- [x] 12.5 MotherGoose Backend - Gosling CLI Binary Lifecycle Management
+- [x] 12.5 MotherGoose Backend - Gosling CLI Binary Lifecycle Management with s3fs
   - Create GoslingBinaryManager in app/services/gosling_binary_manager.py
-  - Implement download_active_version() method (called on MotherGoose startup)
-  - Implement download_and_cache(version: str, local_path: str) method
-  - Implement verify_and_activate(version: str) method
-  - Store downloaded binaries in /tmp/gosling/{version}/gosling with version-based paths
-  - Update GOSLING_CLI_PATH dynamically when version changes
-  - Implement cleanup of old cached versions (keep last 3 versions)
-  - Add startup hook in main.py to download active Gosling CLI binary
+  - Implement mount_s3_binaries() method (called on MotherGoose startup, mounts S3 bucket using s3fs)
+  - Configure s3fs mount point at /mnt/s3-binaries with read-only access
+  - Implement get_active_binary_path() method (returns path to active binary on mounted S3 filesystem)
+  - Implement verify_and_activate(version: str) method (updates symlink to active version)
+  - Create symlink /mnt/s3-binaries/gosling/active → /mnt/s3-binaries/gosling/{version}/gosling
+  - Update GOSLING_CLI_PATH to point to symlink (/mnt/s3-binaries/gosling/active)
+  - Add startup hook in main.py to mount S3 bucket and verify active binary
   - Update fly_parser.py to use GoslingBinaryManager for binary path resolution
+  - Note: No local caching needed, binaries accessed directly from mounted S3 filesystem
   - _Requirements: 23.1, 23.5, 23.6, 23.7, 23.14, 23.30_
 
-- [x] 12.6 MotherGoose Backend - GitHub Binary Auto-Download
-  - Create GitHubBinaryDownloader in app/services/github_binary_downloader.py
+- [x] 12.6 MotherGoose Backend - GitHub Binary Auto-Upload to S3
+  - Create GitHubBinaryUploader in app/services/github_binary_uploader.py
   - Implement check_latest_gosling_version() method using GitHub API
-  - Implement download_gosling_from_github(version: str) method
+  - Implement upload_gosling_from_github(version: str) method (downloads from GitHub, writes to mounted S3 path)
   - Implement check_latest_opentofu_version() method (integrate with existing OpenTofuUpdateGithub)
   - Create periodic task (Celery) to check for new versions daily
   - Send notifications (log warnings) when new versions are available
-  - Automatically download new versions to S3 but do NOT activate
+  - Automatically upload new versions to S3 (via mounted filesystem) but do NOT activate
   - Store version metadata in binary_versions table
+  - Note: Renamed from GitHubBinaryDownloader to GitHubBinaryUploader for clarity
   - _Requirements: 23.21, 23.22, 23.23, 23.24_
 
 - [x] 12.7 MotherGoose Backend - Per-Egg Binary Version Support

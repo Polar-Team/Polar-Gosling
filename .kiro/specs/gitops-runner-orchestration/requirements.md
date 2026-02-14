@@ -402,9 +402,9 @@ The Polar Gosling GitOps Runner Orchestration system is a comprehensive platform
 15. THE JSON output SHALL use consistent field naming (snake_case for Python compatibility)
 
 
-### Requirement 23: Binary Version Management and Updates
+### Requirement 23: Binary Version Management and Updates with S3 Filesystem Mounting
 
-**User Story:** As a platform operator, I want automated version management for Gosling CLI and OpenTofu binaries, so that MotherGoose can use the correct versions for parsing and deployment operations, and update them when needed.
+**User Story:** As a platform operator, I want automated version management for Gosling CLI and OpenTofu binaries using S3 filesystem mounting, so that MotherGoose can access the correct versions directly without downloading, and update them when needed.
 
 #### Acceptance Criteria
 
@@ -412,29 +412,32 @@ The Polar Gosling GitOps Runner Orchestration system is a comprehensive platform
 2. THE System SHALL store OpenTofu binaries in S3 buckets with version-based paths (e.g., `/tofu/{version}/tofu`)
 3. THE System SHALL maintain a binary_versions table in the database tracking available versions for both Gosling CLI and OpenTofu
 4. THE binary_versions table SHALL store: binary_name, version, s3_path, sha256_checksum, is_active, uploaded_at, activated_at
-5. WHEN MotherGoose starts, THE System SHALL download the active Gosling CLI binary from S3 to local filesystem
-6. WHEN MotherGoose starts, THE System SHALL verify the Gosling CLI binary checksum against the database record
-7. THE fly_parser service SHALL use the locally downloaded Gosling CLI binary for parsing operations
+5. WHEN MotherGoose starts, THE System SHALL mount the S3 bucket containing binaries using s3fs at /mnt/s3-binaries
+6. WHEN MotherGoose starts, THE System SHALL verify the active Gosling CLI binary checksum against the database record
+7. THE fly_parser service SHALL use the Gosling CLI binary directly from the mounted S3 filesystem
 8. THE System SHALL support multiple concurrent versions of Gosling CLI and OpenTofu in S3
 9. THE System SHALL mark only one version as "active" per binary at any time
-10. WHEN a new Gosling CLI version is uploaded, THE System SHALL download and verify it but NOT activate it automatically
-11. WHEN a new OpenTofu version is uploaded, THE System SHALL download and verify it but NOT activate it automatically
+10. WHEN a new Gosling CLI version is uploaded, THE System SHALL write it directly to the mounted S3 filesystem but NOT activate it automatically
+11. WHEN a new OpenTofu version is uploaded, THE System SHALL write it directly to the mounted S3 filesystem but NOT activate it automatically
 12. THE System SHALL provide an API endpoint POST /admin/binaries/{binary_name}/activate to activate a specific version
 13. WHEN activating a new binary version, THE System SHALL deactivate the previous active version
-14. WHEN activating a new Gosling CLI version, THE System SHALL download the binary and restart fly_parser service
+14. WHEN activating a new Gosling CLI version, THE System SHALL update the symlink to point to the new version (no restart needed)
 15. WHEN activating a new OpenTofu version, THE System SHALL update the tofu_versions table (already implemented)
 16. THE System SHALL support rollback to previous binary versions via the activation API
 17. THE System SHALL log all binary version changes to audit_logs table
 18. THE System SHALL provide an API endpoint GET /admin/binaries to list all available binary versions
 19. THE System SHALL provide an API endpoint POST /admin/binaries/upload to upload new binary versions with checksums
-20. WHEN uploading a new binary, THE System SHALL validate the checksum before storing in S3
-21. THE System SHALL support downloading Gosling CLI binaries from GitHub releases automatically
-22. THE System SHALL support downloading OpenTofu binaries from GitHub releases automatically (already implemented)
+20. WHEN uploading a new binary, THE System SHALL validate the checksum before storing in the mounted S3 filesystem
+21. THE System SHALL support uploading Gosling CLI binaries from GitHub releases automatically to S3
+22. THE System SHALL support uploading OpenTofu binaries from GitHub releases automatically to S3 (already implemented)
 23. THE System SHALL check for new binary versions on GitHub periodically (configurable interval, default: daily)
 24. THE System SHALL send notifications when new binary versions are available but not yet activated
 25. THE Egg configuration SHALL optionally specify required Gosling CLI version for parsing
 26. THE Egg configuration SHALL optionally specify required OpenTofu version for deployment
-27. WHEN an Egg specifies a required binary version, THE System SHALL use that version for operations on that Egg
-28. WHEN an Egg does not specify a binary version, THE System SHALL use the active version
-29. THE System SHALL fail deployment if the required binary version is not available in S3
-30. THE System SHALL cache downloaded binaries locally with version-based paths (e.g., `/tmp/gosling/{version}/gosling`)
+27. WHEN an Egg specifies a required binary version, THE System SHALL use that version from the mounted S3 filesystem
+28. WHEN an Egg does not specify a binary version, THE System SHALL use the active version (via symlink)
+29. THE System SHALL fail deployment if the required binary version is not available in the mounted S3 filesystem
+30. THE System SHALL use symlinks to manage active binary versions (e.g., /mnt/s3-binaries/gosling/active → /mnt/s3-binaries/gosling/{version}/gosling)
+31. THE System SHALL configure s3fs with appropriate caching and performance options for binary access
+32. THE System SHALL handle s3fs mount failures gracefully with retry logic and fallback mechanisms
+

@@ -46,7 +46,8 @@ jobs:
         id: hash
         run: |
           cd dist
-          echo "hashes=$(sha256sum * | base64 -w0)" >> "$GITHUB_OUTPUT"
+          find . -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec sha256sum {} \; > checksums.txt
+          echo "hashes=$(base64 -w0 < checksums.txt)" >> "$GITHUB_OUTPUT"
 
   provenance:
     needs: [goreleaser]
@@ -77,10 +78,11 @@ jobs:
         with:
           cosign-release: 'v2.4.1'
 
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: ./dist
+      - name: Download release artifacts
+        run: |
+          gh release download ${{ github.ref_name }} --pattern "*.tar.gz" --pattern "*.zip" --dir ./dist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Sign artifacts with Cosign
         run: |
@@ -96,8 +98,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/**/*.sig
-            dist/**/*.pem
+            dist/*.sig
+            dist/*.pem
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -110,10 +112,11 @@ jobs:
         with:
           cosign-release: 'v2.4.1'
 
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: ./dist
+      - name: Download release artifacts
+        run: |
+          gh release download ${{ github.ref_name }} --pattern "*.sig" --dir ./dist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Verify signatures
         run: |

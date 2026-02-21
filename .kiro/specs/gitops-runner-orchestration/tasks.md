@@ -255,17 +255,87 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Add integration tests with real Gosling CLI binary
   - _Requirements: 22.10, 22.11, 22.12, 22.13, 22.15_
 
-- [x] 12.3 MotherGoose Backend - Binary Version Management System
-  - Create binary_versions table in database schema (binary_name, version, s3_path, sha256_checksum, is_active, uploaded_at, activated_at)
-  - Create BinaryVersion Pydantic model in app/model/runners_models.py
-  - Create BinaryVersionService in app/services/binary_version_service.py
-  - Implement list_versions(binary_name: str) method
-  - Implement get_active_version(binary_name: str) method
-  - Implement upload_version(binary_name, version, file, checksum) method (writes directly to mounted S3 path)
-  - Implement activate_version(binary_name, version) method (deactivates previous active version)
-  - Implement verify_checksum(file_path, expected_checksum) method
-  - Add audit logging for all version changes
-  - Note: Uses s3fs to mount S3 bucket as filesystem, no explicit download/upload needed
+- [ ] 12.3 MotherGoose Backend - Gosling CLI Binary Factory Pattern
+  - Umbrella task: implement the full `GoslingBinary` factory pattern mirroring `opentofu_binary.py`
+  - Completed when all sub-tasks 12.3.1–12.3.6 are done and `make mg-tox-all` passes
+
+- [x] 12.3.1 Create GoslingVersionTableYDB model in gosling_models.py
+  - Create new file `app/model/gosling_models.py`
+  - Implement `GoslingVersionTableYDB` dataclass mirroring `OpenTofuVersionTableYDB`:
+    - `table_name = "gosling_version"`
+    - Columns: `version_id`, `version`, `source`, `downloaded_at`, `sha256_hash`, `active`
+    - Types: all `Utf8` except `active` which is `Bool`
+    - Primary key: `version_id`
+    - `__post_init__` validation matching `OpenTofuVersionTableYDB` (column count, types, primary key, table name prefix `gosling_version`)
+  - Implement `GoslingModelYDB` pydantic dataclass (analogous to `OpenTofuModelYDB`) with `tables: list[GoslingVersionTableYDB]`
+  - Add unit tests in `tests/unit/test_gosling_models.py` covering validation rules
+  - _Requirements: 23.3, 23.4_
+
+- [x] 12.3.2 Implement GoslingBinary ABC and GoslingDownloadGithub
+  - Create `app/services/gosling_binary.py`
+  - Implement `GoslingBinary` ABC:
+    - Class-level `_bin_files_info` registry
+    - `get_gosling_bin_files_info()` and `add_gosling_bin_info()` class methods
+    - Abstract methods: `_download_and_extract(extract_to: str)`, `store_downloaded_bin() -> tuple[str, str]`
+    - `_get_latest_version()` and `_get_current_version()` helpers
+  - Implement `GoslingDownloadGithub`:
+    - `__init__` accepts `version`, `github_repo` (default `"Polar-Gosling/gosling"`), `install_dir` (default `/mnt/gosling_binary/{version}`)
+    - `get_sha256_hash_of_bundle_from_github()` and `get_packages_sha256_hash()`
+    - `_get_download_url()` constructing GitHub release asset URL
+    - SHA256 verification via `__check_shasum()`
+    - `_download_and_extract()` downloading and extracting the binary
+    - `store_downloaded_bin()` returning `(version, path)` tuple
+    - Binary filename: `gosling` on Linux, `gosling.exe` on Windows
+    - Install dir default: `/mnt/gosling_binary/{version}/`
+  - _Requirements: 23.8, 23.9, 23.10, 23.11_
+
+- [x] 12.3.3 Implement GoslingDownloadFromOtherSource
+  - Add `GoslingDownloadFromOtherSource` class to `app/services/gosling_binary.py`
+  - Analogous to `OpenTofuDownloadFromOtherSource`:
+    - `__init__` accepts `version`, `download_url`, optional `token`, `bearer_token` flag, `auth_header_name`
+    - `token`, `bearer_token`, `auth_header_name` properties with setters
+    - `__check_shasum()` for SHA256 verification
+    - `__authorization_url()` building authenticated session
+    - `_download_and_extract()` downloading from custom URL with optional auth
+    - `store_downloaded_bin()` returning `(version, path)` tuple
+  - _Requirements: 23.12, 23.13_
+
+- [ ] 12.3.4 Implement GoslingUpdate ABC and GoslingUpdateGithub
+  - Add `GoslingUpdate` ABC to `app/services/gosling_binary.py`:
+    - `_select_version(source)` queries `gosling_version` table (not `opentofu_version`)
+    - `_upsert_data_ydb()` writes to `gosling_version` table
+    - `_deactivate_previous_versions()`, `_latest_info_update()`, `_rollback_info_update()`
+    - `get_current_version()`, `get_version_info()`
+    - Abstract methods: `download_available_versions()`, `check_required_actions()`, `start_update()`
+  - Implement `GoslingUpdateGithub`:
+    - `_source = "github"`
+    - `__init__` accepts `schema`, `github_repo` (default `"Polar-Gosling/gosling"`)
+    - `c_version` property returning `(version_id, version, source)` tuple
+    - `sync_version()`, `_get_latest_version()`, `__update_to_latest_version()`
+    - `__download_rollback_releases()`, `download_available_versions()`
+    - `check_required_actions()`, `start_update()`
+  - _Requirements: 23.16, 23.17_
+
+- [ ] 12.3.5 Implement GoslingUpdateOtherSource
+  - Add `GoslingUpdateOtherSource` class to `app/services/gosling_binary.py`
+  - Analogous to `OpenTofuUpdateOtherSource`:
+    - `__init__` accepts `schema`, `download_url`, optional token
+    - `c_version` property, `rollback` property with setter
+    - `sync_version()`, `__download_rollback_releases()`
+    - `download_available_versions()`, `check_required_actions()`, `start_update()`
+  - _Requirements: 23.20_
+
+- [ ] 12.3.6 Write unit tests for gosling_binary.py
+  - Create `tests/unit/test_download_and_update_gosling.py` mirroring `test_download_and_update_opentofu.py`
+  - Use `YDBSchema` with `GoslingModelYDB(tables=[GoslingVersionTableYDB()])` in test fixtures
+  - Test `GoslingDownloadGithub`: SHA256 verification pass/fail, download URL construction, `store_downloaded_bin()` return value
+  - Test `GoslingDownloadFromOtherSource`: auth header injection, SHA256 verification
+  - Test `GoslingUpdateGithub`:
+    - `_upsert_data_ydb()` writes to `gosling_version` table (not `opentofu_version`)
+    - `_select_version()` queries `gosling_version` table
+    - Version activation sets `active=True`, deactivation sets `active=False`
+    - `check_required_actions()` returns `True` when update available
+  - All tests pass `make mg-tox-all`
   - _Requirements: 23.3, 23.4, 23.8, 23.9, 23.10, 23.11, 23.12, 23.13, 23.16, 23.17, 23.20_
 
 - [x] 12.4 MotherGoose Backend - Binary Version Management API Endpoints

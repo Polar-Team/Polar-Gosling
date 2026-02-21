@@ -109,6 +109,11 @@ jobs:
     needs: [goreleaser, provenance, sign]
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3.7.0
         with:

@@ -97,6 +97,23 @@
     .sidebar a.active { color: var(--accent); border-left-color: var(--accent); background: var(--surface2); }
     .content { flex: 1; padding: 3rem 4rem; max-width: 900px; }
 
+    /* Mobile nav overlay — always defined, hidden by default */
+    .mobile-nav {
+      display: none;
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 999;
+      background: var(--bg);
+      padding: 5rem 2rem 2rem;
+      flex-direction: column; gap: 0;
+      overflow-y: auto;
+    }
+    .mobile-nav.open { display: flex; }
+    .mobile-nav a { color: var(--text); font-size: 1.2rem; font-weight: 500; padding: 1rem 0; border-bottom: 1px solid var(--border); text-decoration: none; }
+    .mobile-nav a:last-child { border-bottom: none; }
+    .mobile-nav-close {
+      position: fixed; top: 1rem; right: 1.25rem; z-index: 1000;
+      background: none; border: none; color: var(--text-muted); font-size: 1.8rem; cursor: pointer; line-height: 1;
+    }
+
     /* Tablet */
     @media (max-width: 1024px) {
       .sidebar { width: 220px; }
@@ -109,21 +126,6 @@
       .nav-links { display: none; }
       .nav-hamburger { display: block; }
       .nav { padding: 0 1.25rem; }
-
-      /* Mobile nav drawer — full screen overlay */
-      .mobile-nav {
-        display: none;
-        position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 999;
-        background: var(--bg);
-        padding: 5rem 2rem 2rem;
-        flex-direction: column; gap: 0;
-        overflow-y: auto;
-      }
-      .mobile-nav.open { display: flex; }
-      .mobile-nav a { color: var(--text); font-size: 1.2rem; font-weight: 500; padding: 1rem 0; border-bottom: 1px solid var(--border); }
-      .mobile-nav a:last-child { border-bottom: none; }
-      .mobile-nav-close { position: fixed; top: 1rem; right: 1.25rem; background: none; border: none; color: var(--text-muted); font-size: 1.8rem; cursor: pointer; z-index: 1000; }
-
       .sidebar { display: none; }
       .content { padding: 1.5rem 1.25rem; }
       .hero { padding: 2rem 1.25rem; border-radius: 8px; }

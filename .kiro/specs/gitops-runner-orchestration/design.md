@@ -2639,6 +2639,46 @@ class OpenTofuUpdateOtherSource:
 - Windows: Downloads `.zip`, extracts `tofu.exe` binary
 - Architecture detection: x86_64/amd64 and arm64
 
+### Gosling CLI Binary Management
+
+**Implementation**: The system includes a `gosling_binary.py` module in `app/services/` that mirrors the structure of `opentofu_binary.py`.
+
+**Class Hierarchy** (analogous to OpenTofu factory):
+
+```python
+class GoslingBinary(ABC):
+    """Abstract base class for Gosling CLI binary management"""
+    # abstract: _download_and_extract(extract_to: str)
+    # abstract: store_downloaded_bin() -> tuple[str, str]
+
+class GoslingDownloadGithub(GoslingBinary):
+    """Downloads Gosling CLI from GitHub releases with SHA256 verification"""
+    # install_dir default: /mnt/gosling_binary/{version}/
+    # binary filename: gosling (Linux) or gosling.exe (Windows)
+
+class GoslingDownloadFromOtherSource(GoslingBinary):
+    """Downloads from custom URL with optional token authentication"""
+
+class GoslingUpdate(ABC):
+    """Abstract base class for Gosling CLI update management"""
+    # Uses gosling_version table (not opentofu_version)
+    # abstract: download_available_versions() -> list[str]
+    # abstract: check_required_actions() -> bool
+    # abstract: start_update() -> None
+
+class GoslingUpdateGithub(GoslingUpdate):
+    """Update manager for GitHub source"""
+    _source = "github"
+    # Queries gosling_version table for current version
+
+class GoslingUpdateOtherSource(GoslingUpdate):
+    """Update manager for custom sources with authentication"""
+```
+
+**Version Table**: `GoslingVersionTableYDB` dataclass (in `app/model/gosling_models.py`) mirrors `OpenTofuVersionTableYDB` with table name `gosling_version`.
+
+**Install Path**: `/mnt/gosling_binary/{version}/gosling`
+
 **Configuration Integration** (`OpenTofuConfiguration`):
 ```python
 class OpenTofuConfiguration:
@@ -3120,7 +3160,21 @@ tofu_versions {
 }
 ```
 
-**Note**: The `version_id` is generated using a decorator that hashes the combination of `sha256_hash`, `version`, and `source` to create a unique identifier.
+**Note**: The `version_id` is generated using a decorator that hashes the combination of `sha256_hash`, `version`, and `source` to create a unique identifier. This table is used exclusively by the `OpenTofuBinary` factory pattern (`opentofu_binary.py`) for local binary download/update lifecycle management. The `GoslingBinary` factory pattern (`gosling_binary.py`) uses an analogous `gosling_version` table with the same structure.
+
+**Gosling Versions Table** (Gosling CLI binary lifecycle management):
+```
+gosling_version {
+    version_id: string (PK)            // Generated hash from sha256_hash + version + source
+    version: string                    // Semantic version (e.g., "1.2.3")
+    source: string                     // "github" or "other"
+    downloaded_at: string              // ISO timestamp
+    sha256_hash: string                // SHA256 checksum of binary
+    active: boolean                    // Currently active version flag
+}
+```
+
+**Note**: The `gosling_version` table mirrors the `opentofu_version` table structure exactly. It is managed exclusively by the `GoslingBinary` factory pattern (`gosling_binary.py`) — analogous to how `opentofu_version` is managed by `OpenTofuBinary` (`opentofu_binary.py`). Each binary type has its own separate table and factory hierarchy; there is no shared/unified table.
 
 **Runner Metrics Table**:
 ```
@@ -3146,6 +3200,7 @@ runner_metrics {
 3. **No Secrets in Database**: Only secret URI references stored, never actual secrets
 4. **Runtime State Separate**: `runners` and `runner_metrics` tables store runtime state only
 5. **Audit Trail**: `sync_history` tracks all Git sync operations for debugging and compliance
+6. **Two Separate Binary Version Tables**: `opentofu_version` (managed by `OpenTofuBinary` factory in `opentofu_binary.py`) and `gosling_version` (managed by `GoslingBinary` factory in `gosling_binary.py`) — each binary type has its own dedicated table and factory hierarchy, mirroring the same structure
 
 
 

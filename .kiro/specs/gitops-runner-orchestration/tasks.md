@@ -300,7 +300,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
     - `store_downloaded_bin()` returning `(version, path)` tuple
   - _Requirements: 23.12, 23.13_
 
-- [ ] 12.3.4 Implement GoslingUpdate ABC and GoslingUpdateGithub
+- [x] 12.3.4 Implement GoslingUpdate ABC and GoslingUpdateGithub
   - Add `GoslingUpdate` ABC to `app/services/gosling_binary.py`:
     - `_select_version(source)` queries `gosling_version` table (not `opentofu_version`)
     - `_upsert_data_ydb()` writes to `gosling_version` table
@@ -316,7 +316,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
     - `check_required_actions()`, `start_update()`
   - _Requirements: 23.16, 23.17_
 
-- [ ] 12.3.5 Implement GoslingUpdateOtherSource
+- [x] 12.3.5 Implement GoslingUpdateOtherSource
   - Add `GoslingUpdateOtherSource` class to `app/services/gosling_binary.py`
   - Analogous to `OpenTofuUpdateOtherSource`:
     - `__init__` accepts `schema`, `download_url`, optional token

@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gosling CLI — Polar Gosling Documentation</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --surface2: #21262d;
+      --border: #30363d;
+      --accent: #58a6ff;
+      --accent2: #3fb950;
+      --accent3: #f78166;
+      --accent4: #d2a8ff;
+      --text: #e6edf3;
+      --text-muted: #8b949e;
+      --code-bg: #1f2937;
+      --tag-bg: #1f3a5f;
+      --tag-text: #79c0ff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* Layout */
+    .nav {
+      position: sticky; top: 0; z-index: 100;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 2rem;
+      display: flex; align-items: center; gap: 2rem; height: 56px;
+    }
+    .nav-logo { font-weight: 700; font-size: 1.1rem; color: var(--text); display: flex; align-items: center; gap: 0.5rem; }
+    .nav-logo span { color: var(--accent); }
+    .nav-links { display: flex; gap: 1.5rem; margin-left: auto; }
+    .nav-links a { color: var(--text-muted); font-size: 0.9rem; }
+    .nav-links a:hover { color: var(--text); text-decoration: none; }
+    .layout { display: flex; min-height: calc(100vh - 56px); }
+    .sidebar {
+      width: 260px; flex-shrink: 0;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 1.5rem 0;
+      position: sticky; top: 56px; height: calc(100vh - 56px);
+      overflow-y: auto;
+    }
+    .sidebar-section { margin-bottom: 1.5rem; }
+    .sidebar-title { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); padding: 0 1.25rem 0.5rem; }
+    .sidebar a { display: block; padding: 0.3rem 1.25rem; font-size: 0.875rem; color: var(--text-muted); border-left: 2px solid transparent; }
+    .sidebar a:hover { color: var(--text); text-decoration: none; background: var(--surface2); }
+    .sidebar a.active { color: var(--accent); border-left-color: var(--accent); background: var(--surface2); }
+    .content { flex: 1; padding: 3rem 4rem; max-width: 900px; }
+    @media (max-width: 768px) {
+      .sidebar { display: none; }
+      .content { padding: 2rem 1.5rem; }
+    }
+
+    /* Hero */
+    .hero {
+      background: linear-gradient(135deg, #0d1117 0%, #161b22 50%, #1a2332 100%);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 3rem;
+      margin-bottom: 3rem;
+      text-align: center;
+    }
+    .hero-badge { display: inline-block; background: var(--tag-bg); color: var(--tag-text); font-size: 0.75rem; font-weight: 600; padding: 0.25rem 0.75rem; border-radius: 20px; margin-bottom: 1rem; letter-spacing: 0.05em; }
+    .hero h1 { font-size: 2.5rem; font-weight: 800; margin-bottom: 0.75rem; background: linear-gradient(135deg, #e6edf3, #58a6ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .hero p { color: var(--text-muted); font-size: 1.1rem; max-width: 600px; margin: 0 auto 1.5rem; }
+    .hero-actions { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+    .btn { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.6rem 1.25rem; border-radius: 6px; font-size: 0.9rem; font-weight: 600; cursor: pointer; border: none; }
+    .btn-primary { background: var(--accent); color: #0d1117; }
+    .btn-primary:hover { background: #79c0ff; text-decoration: none; color: #0d1117; }
+    .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover { background: var(--border); text-decoration: none; color: var(--text); }
+
+    /* Sections */
+    .section { margin-bottom: 3.5rem; scroll-margin-top: 72px; }
+    .section h2 { font-size: 1.6rem; font-weight: 700; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); }
+    .section h3 { font-size: 1.15rem; font-weight: 600; margin: 1.75rem 0 0.75rem; color: var(--accent4); }
+    .section h4 { font-size: 0.95rem; font-weight: 600; margin: 1.25rem 0 0.5rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    p { margin-bottom: 0.75rem; color: var(--text-muted); }
+    p strong { color: var(--text); }
+
+    /* Code */
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem 1.5rem;
+      overflow-x: auto;
+      margin: 0.75rem 0 1.25rem;
+      font-size: 0.875rem;
+      line-height: 1.7;
+    }
+    code { font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace; }
+    p code, li code, td code {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.1em 0.4em;
+      font-size: 0.85em;
+      color: var(--accent4);
+    }
+
+    /* Syntax highlighting */
+    .kw { color: #ff7b72; }
+    .str { color: #a5d6ff; }
+    .num { color: #79c0ff; }
+    .bool { color: #ff7b72; }
+    .cmt { color: #8b949e; font-style: italic; }
+    .block-name { color: #ffa657; }
+    .label { color: #3fb950; }
+    .attr { color: #e6edf3; }
+    .uri { color: #d2a8ff; }
+
+    /* Cards */
+    .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; margin: 1rem 0; }
+    .card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem;
+    }
+    .card-icon { font-size: 1.5rem; margin-bottom: 0.5rem; }
+    .card h4 { font-size: 0.95rem; font-weight: 600; color: var(--text); margin-bottom: 0.35rem; text-transform: none; letter-spacing: 0; }
+    .card p { font-size: 0.85rem; margin: 0; }
+
+    /* Command reference */
+    .cmd-block {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 1.5rem;
+      overflow: hidden;
+    }
+    .cmd-header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0.75rem 1.25rem;
+      display: flex; align-items: center; gap: 0.75rem;
+    }
+    .cmd-name { font-family: monospace; font-size: 1rem; font-weight: 700; color: var(--accent); }
+    .cmd-desc { color: var(--text-muted); font-size: 0.875rem; }
+    .cmd-body { padding: 1.25rem; }
+    .cmd-usage { font-family: monospace; font-size: 0.875rem; color: var(--accent2); background: var(--code-bg); border-radius: 6px; padding: 0.5rem 1rem; margin-bottom: 1rem; display: block; }
+
+    /* Flags table */
+    table { width: 100%; border-collapse: collapse; margin: 0.75rem 0 1.25rem; font-size: 0.875rem; }
+    th { text-align: left; padding: 0.5rem 0.75rem; background: var(--surface); border-bottom: 2px solid var(--border); color: var(--text-muted); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    td { padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+    .flag-name { color: var(--accent2); font-family: monospace; white-space: nowrap; }
+    .flag-required { color: var(--accent3); font-size: 0.75rem; font-weight: 600; }
+    .flag-optional { color: var(--text-muted); font-size: 0.75rem; }
+
+    /* Callouts */
+    .callout {
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin: 1rem 0;
+      border-left: 4px solid;
+      font-size: 0.9rem;
+    }
+    .callout-info { background: #1a2a3a; border-color: var(--accent); }
+    .callout-warn { background: #2a2010; border-color: #e3b341; }
+    .callout-tip { background: #0f2a1a; border-color: var(--accent2); }
+    .callout strong { display: block; margin-bottom: 0.25rem; }
+    .callout-info strong { color: var(--accent); }
+    .callout-warn strong { color: #e3b341; }
+    .callout-tip strong { color: var(--accent2); }
+
+    /* Schema blocks */
+    .schema-block { margin-bottom: 1.5rem; }
+    .schema-block h4 { color: var(--accent); font-family: monospace; font-size: 0.95rem; text-transform: none; letter-spacing: 0; margin-bottom: 0.5rem; }
+
+    /* Badges */
+    .badge { display: inline-block; font-size: 0.7rem; font-weight: 700; padding: 0.15rem 0.5rem; border-radius: 4px; vertical-align: middle; margin-left: 0.4rem; }
+    .badge-req { background: #3a1a1a; color: var(--accent3); }
+    .badge-opt { background: #1a2a1a; color: var(--accent2); }
+
+    /* Footer */
+    footer { border-top: 1px solid var(--border); padding: 2rem 4rem; color: var(--text-muted); font-size: 0.85rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; }
+  </style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-logo">🪿 Gosling <span>CLI</span></div>
+  <div class="nav-links">
+    <a href="#quickstart">Quickstart</a>
+    <a href="#commands">Commands</a>
+    <a href="#fly-language">Fly Language</a>
+    <a href="#concepts">Concepts</a>
+    <a href="https://github.com/polar-gosling/gosling" target="_blank">GitHub ↗</a>
+  </div>
+</nav>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-title">Getting Started</div>
+      <a href="#overview">Overview</a>
+      <a href="#quickstart">Quickstart</a>
+      <a href="#installation">Installation</a>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-title">CLI Commands</div>
+      <a href="#cmd-init">gosling init</a>
+      <a href="#cmd-add">gosling add</a>
+      <a href="#cmd-validate">gosling validate</a>
+      <a href="#cmd-parse">gosling parse</a>
+      <a href="#cmd-deploy">gosling deploy</a>
+      <a href="#cmd-rollback">gosling rollback</a>
+      <a href="#cmd-status">gosling status</a>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-title">Fly Language</div>
+      <a href="#fly-overview">Overview</a>
+      <a href="#fly-egg">egg block</a>
+      <a href="#fly-eggsbucket">eggsbucket block</a>
+      <a href="#fly-job">job block</a>
+      <a href="#fly-uglyfox">uglyfox block</a>
+      <a href="#fly-secrets">Secret URIs</a>
+      <a href="#fly-types">Type System</a>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-title">Concepts</div>
+      <a href="#concepts-nest">Nest Repository</a>
+      <a href="#concepts-runners">Runners</a>
+      <a href="#concepts-pools">Apex / Nadir Pools</a>
+      <a href="#concepts-services">Services</a>
+    </div>
+  </aside>
+
+  <main class="content">
+    <!-- HERO -->
+    <div class="hero">
+      <div class="hero-badge">GitOps Runner Orchestration</div>
+      <h1>Gosling CLI</h1>
+      <p>Bootstrap and manage multi-cloud GitLab CI/CD runner infrastructure using declarative <code>.fly</code> configuration files.</p>
+      <div class="hero-actions">
+        <a href="#quickstart" class="btn btn-primary">⚡ Quickstart</a>
+        <a href="#commands" class="btn btn-secondary">📖 Command Reference</a>
+        <a href="#fly-language" class="btn btn-secondary">🔤 Fly Language</a>
+      </div>
+    </div>
+
+    <!-- OVERVIEW -->
+    <section class="section" id="overview">
+      <h2>Overview</h2>
+      <p>Gosling is the CLI tool for the <strong>Polar Gosling</strong> GitOps runner orchestration system. It manages the lifecycle of GitLab CI/CD runners across Yandex Cloud and AWS through a Git-native workflow.</p>
+      <div class="card-grid">
+        <div class="card"><div class="card-icon">🪺</div><h4>Nest Bootstrapping</h4><p>Initialize and manage the Nest repository — the single source of truth for all runner configuration.</p></div>
+        <div class="card"><div class="card-icon">🔤</div><h4>Fly Language Parser</h4><p>Parse and validate <code>.fly</code> config files — an HCL-like DSL with stronger typing for runner definitions.</p></div>
+        <div class="card"><div class="card-icon">☁️</div><h4>Multi-Cloud Deploy</h4><p>Deploy runners to Yandex Cloud (Serverless Containers, Compute VMs) and AWS (ECS Fargate, EC2).</p></div>
+        <div class="card"><div class="card-icon">🔄</div><h4>GitOps Workflow</h4><p>All changes flow through Git. Gosling reads config from the Nest repo and applies it to cloud infrastructure.</p></div>
+      </div>
+    </section>
+
+    <!-- QUICKSTART -->
+    <section class="section" id="quickstart">
+      <h2>Quickstart</h2>
+      <h3>1. Initialize a Nest repository</h3>
+      <pre><code><span class="cmt"># Create a new Nest repository in the current directory</span>
+gosling init
+
+<span class="cmt"># Or specify a path</span>
+gosling init /path/to/my-nest</code></pre>
+
+      <h3>2. Add an Egg configuration</h3>
+      <pre><code><span class="cmt"># Add a VM-based runner for a Yandex Cloud project</span>
+gosling add egg my-app --type vm --provider yandex
+
+<span class="cmt"># Add a serverless runner for an AWS project</span>
+gosling add egg api-service --type serverless --provider aws --region us-east-1</code></pre>
+
+      <h3>3. Edit the generated config</h3>
+      <pre><code><span class="cmt"># Edit Eggs/my-app/config.fly — set your project_id and token_secret</span>
+vim Eggs/my-app/config.fly</code></pre>
+
+      <h3>4. Validate and deploy</h3>
+      <pre><code><span class="cmt"># Validate all .fly files</span>
+gosling validate
+
+<span class="cmt"># Preview changes (dry run)</span>
+gosling deploy --cloud yandex --region ru-central1-a --api-url https://mg.example.com --api-key $MG_KEY --dry-run
+
+<span class="cmt"># Apply</span>
+gosling deploy --cloud yandex --region ru-central1-a --api-url https://mg.example.com --api-key $MG_KEY</code></pre>
+    </section>
+
+    <!-- INSTALLATION -->
+    <section class="section" id="installation">
+      <h2>Installation</h2>
+      <h3>Build from source</h3>
+      <pre><code>git clone https://github.com/polar-gosling/gosling.git
+cd gosling
+go build -o gosling ./cmd/gosling
+sudo mv gosling /usr/local/bin/</code></pre>
+      <h3>Requirements</h3>
+      <p>Go 1.21 or higher is required to build from source. The compiled binary has no runtime dependencies.</p>
+      <div class="callout callout-info">
+        <strong>ℹ️ Runner containers</strong>
+        The Gosling binary is pre-installed in runner container images. Serverless runners use it to register with GitLab and execute jobs.
+      </div>
+    </section>
+
+    <!-- COMMANDS -->
+    <section class="section" id="commands">
+      <h2>Command Reference</h2>
+      <p>All commands follow the pattern <code>gosling &lt;command&gt; [flags]</code>. Run <code>gosling --help</code> or <code>gosling &lt;command&gt; --help</code> for inline help.</p>
+    </section>
+
+    <!-- CMD: INIT -->
+    <section class="section" id="cmd-init">
+      <div class="cmd-block">
+        <div class="cmd-header">
+          <span class="cmd-name">gosling init</span>
+          <span class="cmd-desc">Initialize a new Nest repository</span>
+        </div>
+        <div class="cmd-body">
+          <code class="cmd-usage">gosling init [path] [flags]</code>
+          <p>Creates the standard Nest directory structure (<code>Eggs/</code>, <code>Jobs/</code>, <code>UF/</code>) along with a <code>README.md</code> and <code>.gitignore</code>. Defaults to the current directory.</p>
+          <table>
+            <tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+            <tr><td class="flag-name">-p, --path</td><td><code>.</code></td><td>Target directory for the Nest repository <span class="flag-optional">optional</span></td></tr>
+          </table>
+          <pre><code>gosling init
+gosling init /path/to/nest
+gosling init --path /path/to/nest</code></pre>
+          <p>After init, the directory will contain:</p>
+          <pre><code>Nest/
+├── Eggs/
+├── Jobs/
+├── UF/
+├── README.md
+└── .gitignore</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- CMD: ADD -->
+    <section class="section" id="cmd-add">
+      <div class="cmd-block">
+        <div class="cmd-header">
+          <span class="cmd-name">gosling add</span>
+          <span class="cmd-desc">Add Egg or Job configurations to the Nest</span>
+        </div>
+        <div class="cmd-body">
+          <h3>gosling add egg</h3>
+          <code class="cmd-usage">gosling add egg &lt;name&gt; [flags]</code>
+          <p>Generates a scaffolded <code>Eggs/&lt;name&gt;/config.fly</code> with sensible defaults. The name must be alphanumeric with hyphens or underscores.</p>
+          <table>
+            <tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+            <tr><td class="flag-name">-t, --type</td><td><code>vm</code></td><td>Runner type: <code>vm</code> or <code>serverless</code></td></tr>
+            <tr><td class="flag-name">-p, --provider</td><td><code>yandex</code></td><td>Cloud provider: <code>yandex</code> or <code>aws</code></td></tr>
+            <tr><td class="flag-name">-r, --region</td><td>provider default</td><td>Cloud region (e.g. <code>ru-central1-a</code>, <code>us-east-1</code>)</td></tr>
+            <tr><td class="flag-name">-i, --interactive</td><td><code>false</code></td><td>Interactive mode for guided setup</td></tr>
+          </table>
+          <pre><code>gosling add egg my-app --type vm --provider yandex
+gosling add egg api-service --type serverless --provider aws --region us-east-1</code></pre>
+
+          <h3>gosling add job</h3>
+          <code class="cmd-usage">gosling add job &lt;name&gt; [flags]</code>
+          <p>Generates a scaffolded <code>Jobs/&lt;name&gt;.fly</code> for a self-management task.</p>
+          <table>
+            <tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+            <tr><td class="flag-name">-s, --schedule</td><td>—</td><td>Cron expression (e.g. <code>"0 2 * * *"</code>)</td></tr>
+            <tr><td class="flag-name">-i, --interactive</td><td><code>false</code></td><td>Interactive mode</td></tr>
+          </table>
+          <pre><code>gosling add job rotate-secrets --schedule "0 2 * * *"
+gosling add job update-runners</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- CMD: VALIDATE -->
+    <section class="section" id="cmd-validate">
+      <div class="cmd-block">
+        <div class="cmd-header">
+          <span class="cmd-name">gosling validate</span>
+          <span class="cmd-desc">Validate .fly configuration files</span>
+        </div>
+        <div class="cmd-body">
+          <code class="cmd-usage">gosling validate [file] [flags]</code>
+          <p>Validates syntax and semantics of <code>.fly</code> files. Without arguments, discovers and validates all <code>.fly</code> files in the Nest repository. Exits with a non-zero code if any file fails.</p>
+          <table>
+            <tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+            <tr><td class="flag-name">-p, --path</td><td><code>.</code></td><td>Path to Nest repository root</td></tr>
+            <tr><td class="flag-name">-a, --all</td><td><code>false</code></td><td>Validate all files (default when no file arg given)</td></tr>
+          </table>
+          <pre><code><span class="cmt"># Validate all files in the Nest</span>
+gosling validate
+
+<span class="cmt"># Validate a specific file</span>
+gosling validate Eggs/my-app/config.fly</code></pre>
+          <p>Validation checks include: block type correctness, required attributes, value type constraints, identifier naming rules, and file-location consistency (e.g. a <code>job</code> block must be in <code>Jobs/</code>).</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- CMD: PARSE -->
+    <section class="section" id="cmd-parse">
+      <div class="cmd-block">
+        <div class="cmd-header">
+          <span class="cmd-name">gosling parse</span>
+          <span class="cmd-desc">Parse a .fly file and output JSON</span>
+        </div>
+        <div class="cmd-body">
+          <code class="cmd-usage">gosling parse &lt;file&gt; [flags]</code>
+          <p>Parses a <code>.fly</code> file and outputs the full AST as JSON to stdout. Used internally by the MotherGoose backend (<code>fly_parser</code> service) via subprocess. Errors go to stderr; exits non-zero on failure.</p>
+          <table>
+            <tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+            <tr><td class="flag-name">-t, --type</td><td>—</td><td>Expected block type: <code>egg</code>, <code>eggsbucket</code>, <code>job</code>, <code>uglyfox</code> <span class="flag-optional">optional</span></td></tr>
+          </table>
+          <pre><code>gosling parse Eggs/my-app/config.fly --type egg
+gosling parse Jobs/rotate-secrets.fly --type job
+gosling parse UF/config.fly --type uglyfox</code></pre>
+          <div class="callout callout-info">
+            <strong>ℹ️ JSON output format</strong>
+            Output uses snake_case field names for Python compatibility. The top-level key is <code>blocks</code>, each block contains <code>type</code>, <code>labels</code>, <code>attributes</code>, and nested <code>blocks</code>.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CMD: DEPLOY -->
+    <section class="section" id="cmd-deploy">
+      <div class="cmd-block">
+        <div class="cmd-header">
+          <span class="cmd-name">gosling deploy</span>
+          <span class="cmd-desc">Deploy resources from the Nest repository</span>
+        </div>
+        <div class="cmd-body">
+          <code class="cmd-usage">gosling deploy [flags]</code>
+          <p>Reads all Egg configurations from the Nest, computes a config hash, and applies changes via the MotherGoose API. Skips eggs where the config hash is unchanged.</p>
+          <table>
+            <tr><th>Flag</th><th>Required</th><th>Description</th></tr>
+            <tr><td class="flag-name">--api-url</td><td><span class="flag-required">required</span></td><td>MotherGoose API base URL</td></tr>
+            <tr><td class="flag-name">--api-key</td><td><span class="flag-required">required</span></td><td>MotherGoose API authentication key</td></tr>
+            <tr><td class="flag-name">--cloud</td><td><span class="flag-required">required</span></td><td>Cloud provider: <code>yandex</code> or <code>aws</code></td></tr>
+            <tr><td class="flag-name">--region</td><td><span class="flag-required">required</span></td><td>Target cloud region</td></tr>
+            <tr><td class="flag-name">--dry-run</td><td><span class="flag-optional">optional</span></td><td>Preview changes without applying</td></tr>
+          </table>
+          <pre><code><span class="cmt"># Dry run — preview what would change</span>
+gosling deploy \
+  --cloud yandex \
+  --region ru-central1-a \
+  --api-url https://mg.example.com \
+  --api-key $MG_API_KEY \
+  --dry-run
+
+<span class="cmt"># Apply deployment</span>
+gosling deploy \
+  --cloud aws \
+  --region us-east-1 \
+  --api-url https://mg.example.com \
+  --api-key $MG_API_KEY</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- CMD: ROLLBACK -->
+    <section class="section" id="cmd-rollback">
+      <div class="cmd-block">
+        <div class="cmd-header">
+          <span class="cmd-name">gosling rollback</span>
+          <span class="cmd-desc">Rollback a deployment to a previous state</span>
+        </div>
+        <div class="cmd-body">
+          <code class="cmd-usage">gosling rollback [flags]</code>
+          <p>Rolls back an egg's deployment. Without <code>--to</code>, rolls back to the most recent previously applied plan. Prompts for confirmation before proceeding.</p>
+          <table>
+            <tr><th>Flag</th><th>Required</th><th>Description</th></tr>
+            <tr><td class="flag-name">--egg</td><td><span class="flag-required">required</span></td><td>Egg name to roll back</td></tr>
+            <tr><td class="flag-name">--api-url</td><td><span class="flag-required">required</span></td><td>MotherGoose API base URL</td></tr>
+            <tr><td class="flag-name">--api-key</td><td><span class="flag-required">required</span></td><td>MotherGoose API authentication key</td></tr>
+            <tr><td class="flag-name">--to</td><td><span class="flag-optional">optional</span></td><td>Specific plan ID to roll back to</td></tr>
+          </table>
+          <pre><code><span class="cmt"># Rollback to previous plan</span>
+gosling rollback --egg my-app --api-url https://mg.example.com --api-key $MG_API_KEY
+
+<span class="cmt"># Rollback to a specific plan ID</span>
+gosling rollback --egg my-app --to abc12345 --api-url https://mg.example.com --api-key $MG_API_KEY</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- CMD: STATUS -->
+    <section class="section" id="cmd-status">
+      <div class="cmd-block">
+        <div class="cmd-header">
+          <span class="cmd-name">gosling status</span>
+          <span class="cmd-desc">Show deployment status</span>
+        </div>
+        <div class="cmd-body">
+          <code class="cmd-usage">gosling status [flags]</code>
+          <p>Displays current deployment status, active runners, and deployment history for one or all eggs. Queries the MotherGoose API.</p>
+          <table>
+            <tr><th>Flag</th><th>Required</th><th>Description</th></tr>
+            <tr><td class="flag-name">--api-url</td><td><span class="flag-required">required</span></td><td>MotherGoose API base URL</td></tr>
+            <tr><td class="flag-name">--api-key</td><td><span class="flag-required">required</span></td><td>MotherGoose API authentication key</td></tr>
+            <tr><td class="flag-name">--egg</td><td><span class="flag-optional">optional</span></td><td>Show status for a specific egg</td></tr>
+            <tr><td class="flag-name">--all</td><td><span class="flag-optional">optional</span></td><td>Show status for all eggs</td></tr>
+          </table>
+          <pre><code>gosling status --egg my-app --api-url https://mg.example.com --api-key $MG_API_KEY
+gosling status --all --api-url https://mg.example.com --api-key $MG_API_KEY</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- FLY LANGUAGE -->
+    <section class="section" id="fly-language">
+      <h2>Fly Language</h2>
+      <p>The <strong>Fly language</strong> (<code>.fly</code> files) is a typed, HCL-inspired DSL for declaring runner infrastructure. It enforces stronger typing than HCL and provides structured validation.</p>
+    </section>
+
+    <section class="section" id="fly-overview">
+      <h3>Syntax Overview</h3>
+      <p>A <code>.fly</code> file contains one or more top-level <strong>blocks</strong>. Each block has a type, optional labels, attributes, and nested blocks.</p>
+      <pre><code><span class="kw">block_type</span> <span class="label">"label"</span> {
+  <span class="attr">attribute</span> = <span class="str">"value"</span>
+
+  <span class="kw">nested_block</span> {
+    <span class="attr">number_attr</span> = <span class="num">42</span>
+    <span class="attr">bool_attr</span>   = <span class="bool">true</span>
+    <span class="attr">list_attr</span>   = [<span class="str">"a"</span>, <span class="str">"b"</span>]
+  }
+}</code></pre>
+
+      <h4>Value Types</h4>
+      <table>
+        <tr><th>Type</th><th>Example</th><th>Notes</th></tr>
+        <tr><td><code>string</code></td><td><code>"hello"</code></td><td>Double-quoted. Supports heredoc with <code>&lt;&lt;-EOT ... EOT</code></td></tr>
+        <tr><td><code>number</code></td><td><code>4096</code>, <code>3.14</code></td><td>Integer or float</td></tr>
+        <tr><td><code>bool</code></td><td><code>true</code>, <code>false</code></td><td>Lowercase only</td></tr>
+        <tr><td><code>list</code></td><td><code>["docker", "linux"]</code></td><td>Homogeneous list of values</td></tr>
+        <tr><td><code>map</code></td><td><code>{key = "val"}</code></td><td>Key-value pairs</td></tr>
+      </table>
+
+      <h4>Identifier Rules</h4>
+      <p>Block labels and names must match <code>^[a-zA-Z][a-zA-Z0-9_-]*</code> — start with a letter, followed by alphanumeric characters, hyphens, or underscores.</p>
+
+      <h4>Comments</h4>
+      <pre><code><span class="cmt"># Single-line comment</span>
+<span class="cmt">// Also a single-line comment</span></code></pre>
+    </section>
+
+    <!-- EGG BLOCK -->
+    <section class="section" id="fly-egg">
+      <h3>egg block</h3>
+      <p>Defines a single managed repository with its runner configuration. Lives at <code>Eggs/&lt;name&gt;/config.fly</code>.</p>
+      <pre><code><span class="kw">egg</span> <span class="label">"my-app"</span> {
+  <span class="attr">type</span> = <span class="str">"vm"</span>  <span class="cmt"># "vm" or "serverless"</span>
+
+  <span class="kw">cloud</span> {
+    <span class="attr">provider</span> = <span class="str">"yandex"</span>  <span class="cmt"># "yandex" or "aws"</span>
+    <span class="attr">region</span>   = <span class="str">"ru-central1-a"</span>
+  }
+
+  <span class="kw">resources</span> {
+    <span class="attr">cpu</span>    = <span class="num">2</span>     <span class="cmt"># cores (1–128)</span>
+    <span class="attr">memory</span> = <span class="num">4096</span>  <span class="cmt"># MB (512–524288)</span>
+    <span class="attr">disk</span>   = <span class="num">20</span>    <span class="cmt"># GB (10–10240)</span>
+  }
+
+  <span class="kw">runner</span> {
+    <span class="attr">tags</span>         = [<span class="str">"docker"</span>, <span class="str">"linux"</span>]
+    <span class="attr">concurrent</span>   = <span class="num">3</span>    <span class="cmt"># max concurrent jobs (1–100)</span>
+    <span class="attr">idle_timeout</span> = <span class="str">"10m"</span>
+  }
+
+  <span class="kw">gitlab</span> {
+    <span class="attr">project_id</span>   = <span class="num">12345</span>
+    <span class="attr">server_name</span>  = <span class="str">"https://gitlab.example.com"</span>
+    <span class="attr">token_secret</span> = <span class="uri">"yc-lockbox://abc123/runner-token"</span>
+  }
+
+  <span class="kw">environment</span> {  <span class="cmt"># optional</span>
+    <span class="attr">DOCKER_DRIVER</span> = <span class="str">"overlay2"</span>
+    <span class="attr">CUSTOM_VAR</span>    = <span class="str">"value"</span>
+  }
+}</code></pre>
+
+      <h4>egg — Required blocks and attributes</h4>
+      <table>
+        <tr><th>Block / Attribute</th><th>Type</th><th>Constraints</th></tr>
+        <tr><td><code>type</code></td><td>string</td><td><code>"vm"</code> or <code>"serverless"</code></td></tr>
+        <tr><td><code>cloud.provider</code></td><td>string</td><td><code>"yandex"</code> or <code>"aws"</code></td></tr>
+        <tr><td><code>cloud.region</code></td><td>string</td><td>Valid cloud region string</td></tr>
+        <tr><td><code>resources.cpu</code></td><td>number</td><td>1–128</td></tr>
+        <tr><td><code>resources.memory</code></td><td>number</td><td>512–524288 MB</td></tr>
+        <tr><td><code>resources.disk</code></td><td>number</td><td>10–10240 GB</td></tr>
+        <tr><td><code>runner.tags</code></td><td>list(string)</td><td>At least one tag</td></tr>
+        <tr><td><code>runner.concurrent</code></td><td>number</td><td>1–100</td></tr>
+        <tr><td><code>gitlab.project_id</code></td><td>number</td><td>1–999999999</td></tr>
+        <tr><td><code>gitlab.server_name</code></td><td>string</td><td>GitLab instance URL or FQDN</td></tr>
+        <tr><td><code>gitlab.token_secret</code></td><td>string</td><td>Secret URI (see <a href="#fly-secrets">Secret URIs</a>)</td></tr>
+      </table>
+    </section>
+
+    <!-- EGGSBUCKET BLOCK -->
+    <section class="section" id="fly-eggsbucket">
+      <h3>eggsbucket block</h3>
+      <p>Groups multiple repositories under shared runner configuration. Lives at <code>Eggs/&lt;name&gt;/config.fly</code>. Replaces the <code>gitlab</code> block with a <code>repositories</code> block containing individual <code>repo</code> entries.</p>
+      <pre><code><span class="kw">eggsbucket</span> <span class="label">"my-group"</span> {
+  <span class="attr">type</span> = <span class="str">"vm"</span>
+
+  <span class="kw">cloud</span> {
+    <span class="attr">provider</span> = <span class="str">"aws"</span>
+    <span class="attr">region</span>   = <span class="str">"us-east-1"</span>
+  }
+
+  <span class="kw">resources</span> {
+    <span class="attr">cpu</span>    = <span class="num">4</span>
+    <span class="attr">memory</span> = <span class="num">8192</span>
+    <span class="attr">disk</span>   = <span class="num">50</span>
+  }
+
+  <span class="kw">runner</span> {
+    <span class="attr">tags</span>       = [<span class="str">"docker"</span>, <span class="str">"linux"</span>, <span class="str">"shared"</span>]
+    <span class="attr">concurrent</span> = <span class="num">5</span>
+  }
+
+  <span class="kw">repositories</span> {
+    <span class="kw">repo</span> <span class="label">"frontend"</span> {
+      <span class="kw">gitlab</span> {
+        <span class="attr">project_id</span>   = <span class="num">101</span>
+        <span class="attr">server_name</span>  = <span class="str">"https://gitlab.com"</span>
+        <span class="attr">token_secret</span> = <span class="uri">"aws-sm://gitlab-tokens/frontend-token"</span>
+      }
+    }
+
+    <span class="kw">repo</span> <span class="label">"backend"</span> {
+      <span class="kw">gitlab</span> {
+        <span class="attr">project_id</span>   = <span class="num">102</span>
+        <span class="attr">server_name</span>  = <span class="str">"https://gitlab.com"</span>
+        <span class="attr">token_secret</span> = <span class="uri">"aws-sm://gitlab-tokens/backend-token"</span>
+      }
+    }
+  }
+}</code></pre>
+    </section>
+
+    <!-- JOB BLOCK -->
+    <section class="section" id="fly-job">
+      <h3>job block</h3>
+      <p>Defines a self-management task executed by MotherGoose on a dedicated runner. Lives at <code>Jobs/&lt;name&gt;.fly</code>. Used for secret rotation, runner image updates, Nest maintenance, etc.</p>
+      <pre><code><span class="kw">job</span> <span class="label">"rotate-secrets"</span> {
+  <span class="attr">schedule</span> = <span class="str">"0 2 * * *"</span>  <span class="cmt"># cron expression (5 or 6 fields)</span>
+
+  <span class="kw">runner</span> {
+    <span class="attr">type</span> = <span class="str">"vm"</span>
+    <span class="attr">tags</span> = [<span class="str">"privileged"</span>]
+  }
+
+  <span class="attr">script</span> = <span class="str">&lt;&lt;-EOT
+    #!/bin/bash
+    set -e
+    gosling rotate-tokens --all
+  EOT</span>
+
+  <span class="kw">on_failure</span> {
+    <span class="attr">notify</span> = [<span class="str">"ops@example.com"</span>]
+  }
+}</code></pre>
+
+      <h4>job — Required attributes</h4>
+      <table>
+        <tr><th>Attribute / Block</th><th>Type</th><th>Description</th></tr>
+        <tr><td><code>schedule</code></td><td>string</td><td>Cron expression (5 or 6 space-separated fields)</td></tr>
+        <tr><td><code>script</code></td><td>string</td><td>Shell script to execute (heredoc supported)</td></tr>
+        <tr><td><code>runner.type</code></td><td>string</td><td><code>"vm"</code> or <code>"serverless"</code></td></tr>
+        <tr><td><code>runner.tags</code></td><td>list(string)</td><td>GitLab runner tags for job routing</td></tr>
+      </table>
+    </section>
+
+    <!-- UGLYFOX BLOCK -->
+    <section class="section" id="fly-uglyfox">
+      <h3>uglyfox block</h3>
+      <p>Defines runner lifecycle policies for the UglyFox service. Lives at <code>UF/config.fly</code>. Controls pruning thresholds, Apex/Nadir pool sizes, and lifecycle rules.</p>
+      <pre><code><span class="kw">uglyfox</span> {
+  <span class="kw">pruning</span> {
+    <span class="attr">failed_threshold</span> = <span class="num">3</span>       <span class="cmt"># terminate after N failures (1–100)</span>
+    <span class="attr">max_age</span>          = <span class="str">"24h"</span>   <span class="cmt"># max runner lifetime</span>
+    <span class="attr">check_interval</span>   = <span class="str">"5m"</span>    <span class="cmt"># how often UglyFox checks</span>
+  }
+
+  <span class="kw">runners_condition</span> <span class="label">"default"</span> {
+    <span class="attr">eggs_entities</span> = [<span class="str">"my-app"</span>, <span class="str">"api-service"</span>]
+
+    <span class="kw">apex</span> {
+      <span class="attr">max_count</span>        = <span class="num">10</span>
+      <span class="attr">min_count</span>        = <span class="num">2</span>
+      <span class="attr">cpu_threshold</span>    = <span class="num">80</span>   <span class="cmt"># % — scale up when exceeded</span>
+      <span class="attr">memory_threshold</span> = <span class="num">70</span>   <span class="cmt"># % — scale up when exceeded</span>
+    }
+
+    <span class="kw">nadir</span> {
+      <span class="attr">max_count</span>    = <span class="num">5</span>
+      <span class="attr">min_count</span>    = <span class="num">0</span>
+      <span class="attr">idle_timeout</span> = <span class="str">"30m"</span>  <span class="cmt"># demote to nadir after idle</span>
+    }
+  }
+
+  <span class="kw">policies</span> {  <span class="cmt"># optional</span>
+    <span class="kw">rule</span> <span class="label">"terminate-old-failed"</span> {
+      <span class="attr">condition</span> = <span class="str">"failed_count >= 3 AND age > 1h"</span>
+      <span class="attr">action</span>    = <span class="str">"terminate"</span>
+    }
+
+    <span class="kw">rule</span> <span class="label">"demote-idle"</span> {
+      <span class="attr">condition</span> = <span class="str">"state == 'apex' AND idle_time > 30m"</span>
+      <span class="attr">action</span>    = <span class="str">"demote_to_nadir"</span>
+    }
+  }
+}</code></pre>
+
+      <h4>Policy rule actions</h4>
+      <table>
+        <tr><th>Action</th><th>Description</th></tr>
+        <tr><td><code>terminate</code></td><td>Permanently remove the runner</td></tr>
+        <tr><td><code>demote_to_nadir</code></td><td>Move runner from Apex to Nadir (dormant) pool</td></tr>
+        <tr><td><code>promote_to_apex</code></td><td>Move runner from Nadir to Apex (active) pool</td></tr>
+      </table>
+    </section>
+
+    <!-- SECRET URIS -->
+    <section class="section" id="fly-secrets">
+      <h3>Secret URIs</h3>
+      <p>Sensitive values are never stored in <code>.fly</code> files directly. Instead, use URI references that MotherGoose resolves at runtime from the appropriate secret backend.</p>
+      <pre><code><span class="cmt"># Yandex Cloud Lockbox</span>
+<span class="attr">token_secret</span> = <span class="uri">"yc-lockbox://{secret-id}/{key}"</span>
+
+<span class="cmt"># AWS Secrets Manager</span>
+<span class="attr">token_secret</span> = <span class="uri">"aws-sm://{secret-name}/{key}"</span>
+
+<span class="cmt"># HashiCorp Vault</span>
+<span class="attr">token_secret</span> = <span class="uri">"vault://{path}/{key}"</span></code></pre>
+
+      <table>
+        <tr><th>Scheme</th><th>Backend</th><th>Format</th></tr>
+        <tr><td><code>yc-lockbox://</code></td><td>Yandex Cloud Lockbox</td><td><code>yc-lockbox://{secret-id}/{key}</code></td></tr>
+        <tr><td><code>aws-sm://</code></td><td>AWS Secrets Manager</td><td><code>aws-sm://{secret-name}/{key}</code></td></tr>
+        <tr><td><code>vault://</code></td><td>HashiCorp Vault</td><td><code>vault://{path}/{key}</code></td></tr>
+      </table>
+      <div class="callout callout-warn">
+        <strong>⚠️ Security</strong>
+        Secret values are masked in all logs and outputs. Invalid or inaccessible secret URIs cause deployment to fail with a descriptive error. Secrets are cached with a configurable TTL to minimize API calls.
+      </div>
+    </section>
+
+    <!-- TYPE SYSTEM -->
+    <section class="section" id="fly-types">
+      <h3>Type System</h3>
+      <p>The Fly parser enforces types at parse time. Assigning a number where a string is expected produces a validation error with file position information.</p>
+      <pre><code><span class="cmt"># ✅ Correct</span>
+<span class="attr">cpu</span>    = <span class="num">2</span>
+<span class="attr">type</span>   = <span class="str">"vm"</span>
+<span class="attr">active</span> = <span class="bool">true</span>
+<span class="attr">tags</span>   = [<span class="str">"docker"</span>, <span class="str">"linux"</span>]
+
+<span class="cmt"># ❌ Type error — cpu expects number, not string</span>
+<span class="attr">cpu</span> = <span class="str">"2"</span>
+
+<span class="cmt"># ❌ Type error — type expects "vm" or "serverless"</span>
+<span class="attr">type</span> = <span class="str">"container"</span></code></pre>
+      <p>Validation errors include the file path, line, and column: <code>config.fly:5:3: type must be 'vm' or 'serverless', got "container" (field: type)</code></p>
+    </section>
+
+    <!-- CONCEPTS -->
+    <section class="section" id="concepts">
+      <h2>Concepts</h2>
+    </section>
+
+    <section class="section" id="concepts-nest">
+      <h3>Nest Repository</h3>
+      <p>The <strong>Nest</strong> is the single source of truth Git repository for all runner configuration. Gosling reads from it; MotherGoose syncs it every 5 minutes and on push webhooks.</p>
+      <pre><code>Nest/
+├── Eggs/
+│   ├── my-project/
+│   │   └── config.fly        <span class="cmt"># Single Egg (one repo)</span>
+│   └── my-group-bucket/
+│       └── config.fly        <span class="cmt"># EggsBucket (multiple repos)</span>
+├── Jobs/
+│   └── rotate-secrets.fly    <span class="cmt"># Self-management task</span>
+├── UF/
+│   └── config.fly            <span class="cmt"># UglyFox lifecycle policies</span>
+└── MG/
+    └── config.fly            <span class="cmt"># MotherGoose infra config</span></code></pre>
+    </section>
+
+    <section class="section" id="concepts-runners">
+      <h3>Runners</h3>
+      <p>Runners are the CI/CD execution environments provisioned by MotherGoose via OpenTofu. Two types are supported:</p>
+      <div class="card-grid">
+        <div class="card">
+          <div class="card-icon">⚡</div>
+          <h4>Serverless</h4>
+          <p>Containerized runners with a 60-minute execution limit. Cost-efficient for short, ephemeral jobs. Deployed to Yandex Cloud Serverless Containers or AWS ECS Fargate.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">🖥️</div>
+          <h4>VM (Apex/Nadir)</h4>
+          <p>Persistent VM-based runners for long-running jobs. Managed in Apex (active) and Nadir (dormant) pools. Deployed to Yandex Cloud Compute VMs or AWS EC2.</p>
+        </div>
+      </div>
+      <p>Runner state is tracked in YDB (Yandex Cloud) or DynamoDB (AWS): <code>ACTIVE</code> → <code>IDLE</code> → <code>BUSY</code> → <code>FAILED</code> → <code>TERMINATED</code>.</p>
+    </section>
+
+    <section class="section" id="concepts-pools">
+      <h3>Apex / Nadir Pools</h3>
+      <p>VM runners are managed in two pools by the <strong>UglyFox</strong> service:</p>
+      <table>
+        <tr><th>Pool</th><th>State</th><th>Description</th></tr>
+        <tr><td><strong>Apex</strong></td><td>Active</td><td>Running, ready to accept GitLab jobs. Scaled up when CPU/memory thresholds are exceeded.</td></tr>
+        <tr><td><strong>Nadir</strong></td><td>Dormant</td><td>Sleeping runners kept warm for fast promotion. Demoted from Apex after idle timeout.</td></tr>
+      </table>
+      <p>Pool sizes and thresholds are configured per <code>runners_condition</code> group in <code>UF/config.fly</code>.</p>
+    </section>
+
+    <section class="section" id="concepts-services">
+      <h3>System Services</h3>
+      <div class="card-grid">
+        <div class="card">
+          <div class="card-icon">🪿</div>
+          <h4>MotherGoose</h4>
+          <p>Primary orchestration server. Handles GitLab webhooks, Git sync, runner deployment via OpenTofu, and exposes the REST API that Gosling CLI talks to.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">🦊</div>
+          <h4>UglyFox</h4>
+          <p>Lifecycle management worker. Monitors runner health, enforces pruning policies from <code>UF/config.fly</code>, and manages Apex/Nadir transitions.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">🌊</div>
+          <h4>Rift</h4>
+          <p>Shared cache and remote Docker/Podman context server. Reduces redundant artifact downloads across runners. Optional — runners work without it.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">🔧</div>
+          <h4>Gosling CLI</h4>
+          <p>This tool. Bootstraps Nest repos, parses <code>.fly</code> files, deploys via MotherGoose API, and runs inside runner containers to register with GitLab.</p>
+        </div>
+      </div>
+
+      <h3>Architecture Flow</h3>
+      <pre><code>Nest Repo (.fly files)
+    │
+    ├─ Git push / 5-min timer ──► MotherGoose (sync-git)
+    │                                  │
+    │                                  ├─ parse via gosling parse
+    │                                  ├─ store EggConfigs in YDB/DynamoDB
+    │                                  └─ enqueue Celery tasks (SQS/YMQ)
+    │
+    └─ GitLab webhook ──────────► MotherGoose (webhook)
+                                       │
+                                       ├─ match Egg config
+                                       ├─ OpenTofu + Jinja2 → provision runner
+                                       └─ runner registers with GitLab, executes job
+
+UglyFox (background)
+    ├─ monitor runner health
+    ├─ enforce UF/config.fly policies
+    └─ Apex ↔ Nadir pool transitions</code></pre>
+    </section>
+
+    <!-- FOOTER -->
+    <footer>
+      <span>Polar Gosling — GitOps Runner Orchestration</span>
+      <span>Gosling CLI · Fly Language · MotherGoose · UglyFox</span>
+    </footer>
+  </main>
+</div>
+
+<script>
+  // Highlight active sidebar link on scroll
+  const sections = document.querySelectorAll('.section[id]');
+  const sidebarLinks = document.querySelectorAll('.sidebar a');
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        sidebarLinks.forEach(link => {
+          link.classList.toggle('active', link.getAttribute('href') === '#' + entry.target.id);
+        });
+      }
+    });
+  }, { rootMargin: '-56px 0px -70% 0px' });
+
+  sections.forEach(s => observer.observe(s));
+</script>
+</body>
+</html>

@@ -1,0 +1,250 @@
+"""Cross-cutting system data for the MCP server."""
+
+from typing import Any
+
+SECRET_URI_SCHEMES: dict[str, Any] = {
+    "description": "Secret URI schemes used in .fly files to reference secrets stored in cloud secret managers. Resolved at runtime by MotherGoose SecretManager service.",
+    "schemes": {
+        "yc-lockbox": {
+            "format": "yc-lockbox://{secret_id}/{key}",
+            "example": "yc-lockbox://e6qnlsf8abc123def456/runner-token",
+            "description": "Yandex Cloud Lockbox secret. secret_id is the Lockbox secret UUID. key is the entry key within the secret.",
+            "resolved_by": "boto3-equivalent YC SDK call to Lockbox API",
+            "auth": "YC service account with lockbox.payloadViewer role",
+        },
+        "aws-sm": {
+            "format": "aws-sm://{secret_name}/{json_key}",
+            "example": "aws-sm://prod/gitlab-runner-token/value",
+            "description": "AWS Secrets Manager secret. secret_name is the SM secret name or ARN. json_key is the key within the JSON secret value.",
+            "resolved_by": "boto3 secretsmanager.get_secret_value()",
+            "auth": "IAM role with secretsmanager:GetSecretValue permission",
+        },
+        "vault": {
+            "format": "vault://{mount_path}/{secret_path}/{key}",
+            "example": "vault://secret/polar-gosling/runner-token/value",
+            "description": "HashiCorp Vault KV secret. mount_path is the KV mount. secret_path is the path within the mount. key is the field name.",
+            "resolved_by": "hvac Python client",
+            "auth": "Vault token or AppRole auth via VAULT_TOKEN / VAULT_ROLE_ID env vars",
+        },
+    },
+    "caching": {
+        "description": "SecretManager caches resolved values in memory with a configurable TTL (default 300s) to reduce API calls.",
+        "env_var": "MOTHERGOOSE_SECRET_CACHE_TTL",
+        "default_ttl_seconds": 300,
+    },
+}
+
+DATABASE_SCHEMA: dict[str, Any] = {
+    "description": "YDB (Yandex Cloud) and DynamoDB (AWS) table schemas. Both backends use the same logical schema; the DB backend is selected via MOTHERGOOSE_DB_BACKEND / UGLYFOX_DB_BACKEND env var.",
+    "tables": {
+        "runners": {
+            "description": "All deployed GitLab runners.",
+            "primary_key": "id",
+            "columns": {
+                "id": {"type": "Utf8", "description": "UUID"},
+                "egg_name": {"type": "Utf8"},
+                "type": {"type": "Utf8", "values": ["SERVERLESS", "APEX", "NADIR"]},
+                "state": {"type": "Utf8", "values": ["ACTIVE", "IDLE", "BUSY", "FAILED", "TERMINATED"]},
+                "cloud_provider": {"type": "Utf8", "values": ["YANDEX", "AWS"]},
+                "region": {"type": "Utf8"},
+                "gitlab_runner_id": {"type": "Int64"},
+                "deployed_from_commit": {"type": "Utf8"},
+                "created_at": {"type": "Utf8", "format": "ISO 8601"},
+                "updated_at": {"type": "Utf8", "format": "ISO 8601"},
+                "last_heartbeat": {"type": "Utf8", "format": "ISO 8601"},
+                "failure_count": {"type": "Int64"},
+                "metadata": {"type": "String", "description": "JSON blob with cloud-specific metadata"},
+            },
+        },
+        "egg_configs": {
+            "description": "Parsed Egg/EggsBucket configurations synced from the Nest repo.",
+            "primary_key": "id",
+            "columns": {
+                "id": {"type": "Utf8"},
+                "name": {"type": "Utf8", "description": "Unique egg name, used as FK from runners"},
+                "project_id": {"type": "Int64"},
+                "group_id": {"type": "Int64"},
+                "config": {"type": "String", "description": "Full parsed .fly config as JSON"},
+                "git_commit": {"type": "Utf8"},
+                "git_repo_url_secret": {"type": "Utf8"},
+                "gitlab_token_secret_uri": {"type": "Utf8"},
+                "gitlab_webhook_secret_uri": {"type": "Utf8"},
+                "synced_at": {"type": "Utf8"},
+                "created_at": {"type": "Utf8"},
+                "updated_at": {"type": "Utf8"},
+            },
+        },
+        "sync_history": {
+            "description": "Log of every Nest Git sync operation.",
+            "primary_key": "id",
+            "columns": {
+                "id": {"type": "Utf8"},
+                "git_commit": {"type": "Utf8"},
+                "sync_type": {"type": "Utf8", "values": ["scheduled", "webhook", "manual"]},
+                "status": {"type": "Utf8", "values": ["SUCCESS", "FAILED"]},
+                "changes_detected": {"type": "Int64"},
+                "eggs_synced": {"type": "Int64"},
+                "jobs_synced": {"type": "Int64"},
+                "uf_config_synced": {"type": "Utf8", "values": ["true", "false"]},
+                "error_message": {"type": "Utf8", "nullable": True},
+                "synced_at": {"type": "Utf8"},
+                "duration_ms": {"type": "Int64"},
+            },
+        },
+        "deployment_plans": {
+            "description": "Stored OpenTofu plans for runner deployments, enabling rollback.",
+            "primary_key": "id",
+            "columns": {
+                "id": {"type": "Utf8"},
+                "egg_name": {"type": "Utf8"},
+                "plan_type": {"type": "Utf8", "values": ["deploy", "terminate", "update"]},
+                "config_hash": {"type": "Utf8", "description": "SHA256 of rendered Jinja2 config"},
+                "status": {"type": "Utf8", "values": ["PENDING", "APPLIED", "ROLLED_BACK", "FAILED"]},
+                "plan_binary": {"type": "String", "description": "Base64-encoded OpenTofu plan binary"},
+                "rollback_plan_id": {"type": "Utf8", "nullable": True},
+                "created_at": {"type": "Utf8"},
+                "applied_at": {"type": "Utf8", "nullable": True},
+                "metadata": {"type": "String"},
+            },
+        },
+        "audit_logs": {
+            "description": "Immutable audit trail for all system actions.",
+            "primary_key": "id",
+            "columns": {
+                "id": {"type": "Utf8"},
+                "timestamp": {"type": "Utf8"},
+                "actor": {"type": "Utf8", "description": "Service name or user identifier"},
+                "action": {"type": "Utf8", "description": "e.g. runner.deploy, egg.sync, runner.terminate"},
+                "resource_type": {"type": "Utf8"},
+                "resource_id": {"type": "Utf8"},
+                "details": {"type": "String", "description": "JSON blob with action-specific details"},
+            },
+        },
+        "tofu_versions": {
+            "description": "Registry of downloaded OpenTofu binary versions.",
+            "primary_key": "version_id",
+            "columns": {
+                "version_id": {"type": "Utf8"},
+                "version": {"type": "Utf8", "description": "Semantic version string (e.g. 1.6.2)"},
+                "source": {"type": "Utf8", "values": ["github", "custom"], "description": "Download source"},
+                "downloaded_at": {"type": "Utf8"},
+                "sha256_hash": {"type": "Utf8"},
+                "active": {"type": "Bool", "description": "Whether this version is currently in use"},
+            },
+        },
+        "gosling_version": {
+            "description": "Registry of downloaded Gosling CLI binary versions.",
+            "primary_key": "version_id",
+            "columns": {
+                "version_id": {"type": "Utf8"},
+                "version": {"type": "Utf8"},
+                "source": {"type": "Utf8", "values": ["github", "custom"]},
+                "downloaded_at": {"type": "Utf8"},
+                "sha256_hash": {"type": "Utf8"},
+                "active": {"type": "Bool"},
+            },
+        },
+    },
+    "relationships": [
+        "runners.egg_name → egg_configs.name (logical FK)",
+        "deployment_plans.egg_name → egg_configs.name (logical FK)",
+    ],
+}
+
+ARCHITECTURE_OVERVIEW: dict[str, Any] = {
+    "system_name": "Polar Gosling",
+    "description": "Multi-cloud GitOps CI/CD runner orchestration system. Automatically provisions, manages, and terminates GitLab runners across Yandex Cloud and AWS based on configuration stored in a Git repository (the Nest).",
+    "services": {
+        "MotherGoose": {
+            "type": "Python / FastAPI + Celery",
+            "role": "Primary orchestration server",
+            "responsibilities": [
+                "Expose REST API for eggs, runners, webhooks, internal triggers, binary management",
+                "Receive and validate GitLab webhooks (X-Gitlab-Token per egg)",
+                "Periodic and event-driven Nest Git sync (every 5 min + push webhook)",
+                "Parse .fly files via Gosling CLI subprocess",
+                "Deploy/terminate runners via OpenTofu + Jinja2 templates",
+                "Manage OpenTofu and Gosling binary versions",
+                "Write audit logs and sync history",
+            ],
+            "repo": "Polar-Gosling-MotherGoose",
+            "entry_points": ["main.py (FastAPI)", "celery_worker.py (Celery)"],
+        },
+        "UglyFox": {
+            "type": "Python / Celery",
+            "role": "Runner lifecycle management worker",
+            "responsibilities": [
+                "Monitor runner health via periodic heartbeat checks",
+                "Enforce pruning policies (max age, max failures, idle timeout)",
+                "Manage Apex (active) / Nadir (dormant) runner pool sizes",
+                "Promote/demote runners between Apex and Nadir states",
+                "Send terminate_runner tasks to MotherGoose via SQS/YMQ",
+            ],
+            "repo": "Polar-Gosling-MotherGoose (uglyfox/ subdirectory)",
+            "entry_points": ["celery_worker.py"],
+        },
+        "Rift": {
+            "type": "VM / Docker context server",
+            "role": "Shared cache and remote Docker build context",
+            "responsibilities": [
+                "Provide remote Docker/Podman build context for runner container builds",
+                "Cache build artifacts and layers",
+            ],
+            "repo": "Separate (not in this workspace)",
+        },
+        "GoslingCLI": {
+            "type": "Go binary",
+            "role": "Developer CLI and .fly file parser",
+            "responsibilities": [
+                "Parse .fly files to JSON (used by MotherGoose as subprocess)",
+                "Scaffold new Nest repos and Egg/Job configs",
+                "Validate .fly files locally",
+                "Trigger deployments and check status via MotherGoose API",
+            ],
+            "repo": "Polar-Gosling",
+        },
+        "ComputeModule": {
+            "type": "OpenTofu/Terraform module",
+            "role": "Reusable IaC module for runner provisioning",
+            "responsibilities": [
+                "Provision EC2 instances and ECS Fargate tasks on AWS",
+                "Provision Compute VMs and Serverless Containers on Yandex Cloud",
+                "Output hostname, public_ip, private_ip, id for each runner",
+            ],
+            "repo": "Polar-Gosling-Compute-Module",
+        },
+    },
+    "data_flow": {
+        "git_sync": [
+            "YC Timer / AWS EventBridge fires every 5 minutes → POST /internal/sync-git",
+            "MotherGoose enqueues sync_nest_config Celery task",
+            "Task clones/pulls Nest repo via GitPython",
+            "Gosling CLI parses all .fly files → JSON",
+            "Results upserted to egg_configs, jobs, uf_config tables",
+            "sync_history record written",
+        ],
+        "webhook_processing": [
+            "GitLab sends POST /webhooks/gitlab with X-Gitlab-Token",
+            "MotherGoose validates token against egg's gitlab_webhook_secret",
+            "process_webhook Celery task enqueued",
+            "Task fetches EggConfig, resolves secrets via SecretManager",
+            "OpenTofu templates rendered via Jinja2",
+            "tofu plan + apply executed via tofupy",
+            "Runner record upserted, audit_log written",
+        ],
+        "runner_lifecycle": [
+            "UglyFox check_runner_health polls all active runners every 60s",
+            "Unhealthy runners get failure_count incremented",
+            "evaluate_pruning_policies checks max_age, max_failures, idle_timeout",
+            "Runners violating policies → terminate_runner task sent to MotherGoose queue",
+            "manage_apex_nadir_pools adjusts pool sizes per UF config targets",
+        ],
+    },
+    "cloud_targets": {
+        "yandex_cloud": ["YDB (database)", "YMQ (message queue)", "Lockbox (secrets)", "Serverless Containers (runners)", "Compute VMs (runners)", "YC Monitoring"],
+        "aws": ["DynamoDB (database)", "SQS (message queue)", "Secrets Manager (secrets)", "ECS Fargate (runners)", "EC2 (runners)", "CloudWatch"],
+    },
+    "message_broker": "SQS (AWS) or YMQ (Yandex Cloud) — selected by CELERY_BROKER_URL env var",
+    "secret_backends": ["yc-lockbox://", "aws-sm://", "vault://"],
+    "iac_tool": "OpenTofu >= 1.3.5 (Terraform-compatible)",
+}

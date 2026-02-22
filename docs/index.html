@@ -98,34 +98,28 @@
     .content { flex: 1; padding: 3rem 4rem; max-width: 900px; }
 
     /* Mobile nav overlay */
-    .mobile-nav {
-      display: flex;
-      flex-direction: column;
+    #mobile-nav {
+      display: none;
       position: fixed;
       top: 0; left: 0;
-      width: 100vw;
-      z-index: 9998;
-      background: var(--bg);
-      padding: 5rem 2rem 2rem;
+      width: 100%;
+      z-index: 99999;
+      background: #080e14;
+      padding: 4.5rem 2rem 2rem;
+      flex-direction: column;
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
-      box-sizing: border-box;
-      transform: translateX(-100%);
-      transition: transform 0.25s ease;
-      visibility: hidden;
     }
-    .mobile-nav.open {
-      transform: translateX(0);
-      visibility: visible;
-    }
-    .mobile-nav a { color: var(--text); font-size: 1.2rem; font-weight: 500; padding: 1rem 0; border-bottom: 1px solid var(--border); text-decoration: none; }
-    .mobile-nav a:last-child { border-bottom: none; }
-    .mobile-nav-close {
-      position: fixed; top: 1rem; right: 1.25rem; z-index: 9999;
-      background: none; border: none; color: var(--text-muted); font-size: 1.8rem; cursor: pointer; line-height: 1;
+    #mobile-nav.open { display: flex; }
+    #mobile-nav a { color: #e2eaf4; font-size: 1.2rem; font-weight: 500; padding: 1rem 0; border-bottom: 1px solid #1e2d42; text-decoration: none; display: block; }
+    #mobile-nav a:last-child { border-bottom: none; }
+    #mobile-nav-close {
+      position: fixed; top: 1rem; right: 1.25rem;
+      z-index: 100000;
+      background: none; border: none; color: #7a90a8; font-size: 2rem; cursor: pointer; line-height: 1;
       display: none;
     }
-    .mobile-nav-close.visible { display: block; }
+    #mobile-nav-close.visible { display: block; }
 
     /* Tablet */
     @media (max-width: 1024px) {
@@ -314,8 +308,9 @@
   </div>
   <button class="nav-hamburger" aria-label="Open menu">☰</button>
 </nav>
-<div class="mobile-nav" id="mobile-nav">
-  <button class="mobile-nav-close">✕</button>
+
+<button id="mobile-nav-close">✕</button>
+<div id="mobile-nav">
   <a href="#quickstart">Quickstart</a>
   <a href="#commands">Commands</a>
   <a href="#fly-language">Fly Language</a>
@@ -1004,10 +999,9 @@ UglyFox (background)
 
 <script>
   const mobileNav = document.getElementById('mobile-nav');
-  const closeBtn = document.querySelector('.mobile-nav-close');
+  const closeBtn = document.getElementById('mobile-nav-close');
 
   function openNav() {
-    // Set exact pixel height from JS — bypasses iOS Safari 100vh bug
     mobileNav.style.height = window.innerHeight + 'px';
     mobileNav.classList.add('open');
     closeBtn.classList.add('visible');
@@ -1022,9 +1016,8 @@ UglyFox (background)
 
   document.querySelector('.nav-hamburger').addEventListener('click', openNav);
   closeBtn.addEventListener('click', closeNav);
-  document.querySelectorAll('.mobile-nav a').forEach(a => a.addEventListener('click', closeNav));
+  document.querySelectorAll('#mobile-nav a').forEach(a => a.addEventListener('click', closeNav));
 
-  // Recalculate on resize (orientation change)
   window.addEventListener('resize', () => {
     if (mobileNav.classList.contains('open')) {
       mobileNav.style.height = window.innerHeight + 'px';

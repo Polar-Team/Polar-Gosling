@@ -21,11 +21,48 @@
       --tag-text: #7dd3fc;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background: var(--bg);
       color: var(--text);
       line-height: 1.6;
+    }
+
+    /* Splash screen */
+    #splash {
+      position: fixed; inset: 0; z-index: 9999;
+      background: #000;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.5rem;
+      animation: splashFadeOut 0.6s ease-in 1.8s both;
+      pointer-events: none;
+    }
+    #splash img {
+      width: 120px; height: 120px; object-fit: contain;
+      animation: splashPulse 1s ease-in-out 3;
+      filter: drop-shadow(0 0 24px rgba(56,189,248,0.5));
+    }
+    #splash-text {
+      font-size: 1rem; font-weight: 600; letter-spacing: 0.15em;
+      color: var(--text-muted); text-transform: uppercase;
+      animation: splashTextFade 1.8s ease-in-out both;
+    }
+    @keyframes splashPulse {
+      0%, 100% { opacity: 1;   transform: scale(1);    }
+      50%       { opacity: 0.6; transform: scale(0.92); }
+    }
+    @keyframes splashTextFade {
+      0%   { opacity: 0; }
+      30%  { opacity: 1; }
+      80%  { opacity: 1; }
+      100% { opacity: 0; }
+    }
+    @keyframes splashFadeOut {
+      from { opacity: 1; }
+      to   { opacity: 0; }
     }
     a { color: var(--accent); text-decoration: none; }
     a:hover { text-decoration: underline; }
@@ -201,6 +238,11 @@
   </style>
 </head>
 <body>
+
+<div id="splash">
+  <img src="./logo.png" alt="Polar Gosling" />
+  <div id="splash-text">Polar Gosling</div>
+</div>
 
 <nav class="nav">
   <div class="nav-logo">🪿 Gosling <span>CLI</span></div>

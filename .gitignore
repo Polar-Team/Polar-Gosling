@@ -37,3 +37,6 @@ build/
 # Environment files
 .env
 .env.local
+
+# Git worktrees (not submodules — never stage these)
+dev-new-features/

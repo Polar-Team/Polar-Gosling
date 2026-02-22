@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Gosling CLI — Polar Gosling Documentation</title>
   <style>
     :root {
@@ -80,7 +80,7 @@
     .nav-links { display: flex; gap: 1.5rem; margin-left: auto; }
     .nav-links a { color: var(--text-muted); font-size: 0.9rem; }
     .nav-links a:hover { color: var(--text); text-decoration: none; }
-    .nav-hamburger { display: none; background: none; border: none; cursor: pointer; padding: 0.5rem; color: var(--text-muted); font-size: 1.4rem; margin-left: auto; flex-shrink: 0; }
+    .nav-hamburger { display: none; background: none; border: none; cursor: pointer; padding: 0.25rem; color: var(--text-muted); font-size: 1.4rem; margin-left: auto; }
     .layout { display: flex; min-height: calc(100vh - 56px); }
     .sidebar {
       width: 260px; flex-shrink: 0;
@@ -100,19 +100,24 @@
     /* Mobile nav overlay — always defined, hidden by default */
     .mobile-nav {
       display: none;
-      position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; min-height: -webkit-fill-available;
-      z-index: 999;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      width: 100%;
+      height: 100vh;
+      height: 100dvh;
+      z-index: 9998;
       background: var(--bg);
       padding: 5rem 2rem 2rem;
       flex-direction: column; gap: 0;
       overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
       box-sizing: border-box;
     }
     .mobile-nav.open { display: flex; }
     .mobile-nav a { color: var(--text); font-size: 1.2rem; font-weight: 500; padding: 1rem 0; border-bottom: 1px solid var(--border); text-decoration: none; }
     .mobile-nav a:last-child { border-bottom: none; }
     .mobile-nav-close {
-      position: fixed; top: 1rem; right: 1.25rem; z-index: 1000;
+      position: absolute; top: 1rem; right: 1.25rem;
       background: none; border: none; color: var(--text-muted); font-size: 1.8rem; cursor: pointer; line-height: 1;
     }
 
@@ -301,14 +306,14 @@
     <a href="#concepts">Concepts</a>
     <a href="https://github.com/polar-gosling/gosling" target="_blank">GitHub ↗</a>
   </div>
-  <button class="nav-hamburger" aria-label="Open menu" onclick="document.getElementById('mobile-nav').classList.toggle('open'); document.body.style.overflow = document.getElementById('mobile-nav').classList.contains('open') ? 'hidden' : ''">☰</button>
+  <button class="nav-hamburger" aria-label="Open menu">☰</button>
 </nav>
 <div class="mobile-nav" id="mobile-nav">
-  <button class="mobile-nav-close" onclick="document.getElementById('mobile-nav').classList.remove('open'); document.body.style.overflow = ''">✕</button>
-  <a href="#quickstart" onclick="this.parentElement.classList.remove('open'); document.body.style.overflow = ''">Quickstart</a>
-  <a href="#commands" onclick="this.parentElement.classList.remove('open'); document.body.style.overflow = ''">Commands</a>
-  <a href="#fly-language" onclick="this.parentElement.classList.remove('open'); document.body.style.overflow = ''">Fly Language</a>
-  <a href="#concepts" onclick="this.parentElement.classList.remove('open'); document.body.style.overflow = ''">Concepts</a>
+  <button class="mobile-nav-close">✕</button>
+  <a href="#quickstart">Quickstart</a>
+  <a href="#commands">Commands</a>
+  <a href="#fly-language">Fly Language</a>
+  <a href="#concepts">Concepts</a>
   <a href="https://github.com/polar-gosling/gosling" target="_blank">GitHub ↗</a>
 </div>
 
@@ -992,6 +997,38 @@ UglyFox (background)
 </div>
 
 <script>
+  // Fix iOS Safari viewport height bug
+  function setRealVh() {
+    document.documentElement.style.setProperty('--real-vh', window.innerHeight + 'px');
+  }
+  setRealVh();
+  window.addEventListener('resize', setRealVh);
+
+  // Apply real viewport height to mobile nav
+  const mobileNav = document.getElementById('mobile-nav');
+  function applyNavHeight() {
+    mobileNav.style.height = window.innerHeight + 'px';
+  }
+
+  function openNav() {
+    applyNavHeight();
+    mobileNav.classList.add('open');
+    document.body.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.width = '100%';
+  }
+
+  function closeNav() {
+    mobileNav.classList.remove('open');
+    document.body.style.overflow = '';
+    document.body.style.position = '';
+    document.body.style.width = '';
+  }
+
+  document.querySelector('.nav-hamburger').addEventListener('click', openNav);
+  document.querySelector('.mobile-nav-close').addEventListener('click', closeNav);
+  document.querySelectorAll('.mobile-nav a').forEach(a => a.addEventListener('click', closeNav));
+
   // Highlight active sidebar link on scroll
   const sections = document.querySelectorAll('.section[id]');
   const sidebarLinks = document.querySelectorAll('.sidebar a');

@@ -255,7 +255,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Add integration tests with real Gosling CLI binary
   - _Requirements: 22.10, 22.11, 22.12, 22.13, 22.15_
 
-- [ ] 12.3 MotherGoose Backend - Gosling CLI Binary Factory Pattern
+- [x] 12.3 MotherGoose Backend - Gosling CLI Binary Factory Pattern
   - Umbrella task: implement the full `GoslingBinary` factory pattern mirroring `opentofu_binary.py`
   - Completed when all sub-tasks 12.3.1–12.3.6 are done and `make mg-tox-all` passes
 
@@ -325,7 +325,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
     - `download_available_versions()`, `check_required_actions()`, `start_update()`
   - _Requirements: 23.20_
 
-- [ ] 12.3.6 Write unit tests for gosling_binary.py
+- [x] 12.3.6 Write unit tests for gosling_binary.py
   - Create `tests/unit/test_download_and_update_gosling.py` mirroring `test_download_and_update_opentofu.py`
   - Use `YDBSchema` with `GoslingModelYDB(tables=[GoslingVersionTableYDB()])` in test fixtures
   - Test `GoslingDownloadGithub`: SHA256 verification pass/fail, download URL construction, `store_downloaded_bin()` return value
@@ -471,7 +471,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Note: OpenTofu is used for ALL runner deployment (both Egg runners and Job runners)
   - _Requirements: 4.5, 5.3, 6.1_
 
-- [ ] 17. MotherGoose Backend - Serverless Runner Deployment
+- [x] 17. MotherGoose Backend - Serverless Runner Deployment
   - Implement complete OpenTofu template rendering for runner deployment (all templates: providers.tf, resources.tf, variables.tf, data.tf, .terraformrc)
   - Implement OpenTofu plan generation and storage in database
   - Implement OpenTofu apply execution for runner deployment
@@ -484,7 +484,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7_
 
 
-- [ ] 17.1 Implement complete OpenTofu template rendering for runner deployment
+- [x] 17.1 Implement complete OpenTofu template rendering for runner deployment
   - Extend `OpenTofuConfiguration.__create_tofu_configuration_from_templates()` to render ALL required templates
   - Implement `tofu_providers_tf.j2` → `providers.tf` rendering
     - Render provider blocks with settings from Egg configuration
@@ -521,7 +521,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
     - `cloud_init_template` (Optional[str], path to cloud-init template)
   - _Requirements: 5.1, 5.3, 6.1_
 
-- [ ] 17.2 Implement OpenTofu plan generation and storage
+- [x] 17.2 Implement OpenTofu plan generation and storage
   - Create `generate_plan()` method in OpenTofuConfiguration class
   - Execute `tofu plan -out=plan.tfplan` to generate binary plan file
   - Read binary plan file and store in database (deployment_plans table)
@@ -531,7 +531,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Log plan generation events to audit_logs table
   - _Requirements: 5.3, 14.3_
 
-- [ ] 17.3 Implement OpenTofu apply execution
+- [x] 17.3 Implement OpenTofu apply execution
   - Create `apply_plan()` method in OpenTofuConfiguration class
   - Retrieve stored plan from database by plan_id
   - Write plan binary to temporary file
@@ -543,7 +543,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Log apply execution events to audit_logs table
   - _Requirements: 5.3, 5.4, 14.1_
 
-- [ ] 17.4 Integrate template rendering with Celery task workflow
+- [x] 17.4 Integrate template rendering with Celery task workflow
   - Update `deploy_runner` Celery task to call template rendering methods
   - Call `__create_tofu_configuration_from_templates()` with all templates
   - Call `generate_plan()` after template rendering
@@ -553,11 +553,11 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Add retry logic for transient failures (network errors, API rate limits)
   - _Requirements: 4.5, 5.3, 5.4_
 
-- [ ] 17.5 Write property test for serverless runner timeout
+- [x] 17.5 Write property test for serverless runner timeout
   - **Property 12: Serverless Runner Timeout Enforcement**
   - **Validates: Requirements 5.2**
 
-- [ ] 17.6 Write property test for serverless runner cleanup
+- [x] 17.6 Write property test for serverless runner cleanup
   - **Property 13: Serverless Runner Cleanup**
   - **Validates: Requirements 5.6**
 

@@ -23,6 +23,9 @@ An MCP (Model Context Protocol) server that exposes structured information about
 | `get_secret_uri_schemes` | yc-lockbox://, aws-sm://, vault:// reference |
 | `get_database_schema` | All YDB/DynamoDB table schemas |
 | `get_architecture_overview` | System flow, services, cloud targets |
+| `get_steering_product` | Product overview: services, key concepts, Nest repo structure, .fly file types, cloud targets |
+| `get_steering_structure` | Full project structure: repository layout, directory conventions, file locations for all three repos |
+| `get_steering_tech` | Tech stack: languages, frameworks, code quality tools, common commands, dependency management |
 
 ## Setup
 

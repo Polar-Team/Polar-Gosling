@@ -36,6 +36,11 @@ from data.cross_cutting import (
     DATABASE_SCHEMA,
     ARCHITECTURE_OVERVIEW,
 )
+from data.kiro import (
+    STEERING_PRODUCT,
+    STEERING_STRUCTURE,
+    STEERING_TECH,
+)
 
 app = Server("polar-gosling")
 
@@ -130,6 +135,22 @@ TOOLS: list[Tool] = [
         description="Get a high-level architecture overview: system flow, services, deployment mechanisms, cloud targets.",
         inputSchema={"type": "object", "properties": {}, "required": []},
     ),
+    # Kiro steering
+    Tool(
+        name="get_steering_product",
+        description="Get the product overview: services, key concepts, Nest repo structure, .fly file types, and cloud targets.",
+        inputSchema={"type": "object", "properties": {}, "required": []},
+    ),
+    Tool(
+        name="get_steering_structure",
+        description="Get the full project structure: repository layout, directory conventions, and file locations for all three repos.",
+        inputSchema={"type": "object", "properties": {}, "required": []},
+    ),
+    Tool(
+        name="get_steering_tech",
+        description="Get the tech stack: languages, frameworks, code quality tools, common commands, and dependency management.",
+        inputSchema={"type": "object", "properties": {}, "required": []},
+    ),
 ]
 
 _DISPATCH: dict[str, object] = {
@@ -150,6 +171,9 @@ _DISPATCH: dict[str, object] = {
     "get_secret_uri_schemes": SECRET_URI_SCHEMES,
     "get_database_schema": DATABASE_SCHEMA,
     "get_architecture_overview": ARCHITECTURE_OVERVIEW,
+    "get_steering_product": STEERING_PRODUCT,
+    "get_steering_structure": STEERING_STRUCTURE,
+    "get_steering_tech": STEERING_TECH,
 }
 
 

@@ -669,7 +669,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - **Property 19: UglyFox Audit Logging**
   - **Validates: Requirements 7.7**
 
-- [ ] 23. Gosling CLI - Runner Mode Implementation
+- [x] 23. Gosling CLI - Runner Mode Implementation
   - Implement `gosling runner` command
   - Create GitLab Runner Agent manager
   - Implement version synchronization with Egg config
@@ -677,11 +677,11 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Implement signal handlers (SIGTERM, SIGHUP, SIGINT)
   - _Requirements: 6.8, 11.4, 11.5, 11.6_
 
-- [ ] 23.1 Write property test for runner tag-based routing
+- [x] 23.1 Write property test for runner tag-based routing
   - **Property 27: Runner Tag-Based Routing**
   - **Validates: Requirements 11.7**
 
-- [ ]* 23.2 Write property test for environment variable injection
+- [x] 23.2 Write property test for environment variable injection
   - **Property 29: Environment Variable Injection**
   - **Validates: Requirements 12.7**
 

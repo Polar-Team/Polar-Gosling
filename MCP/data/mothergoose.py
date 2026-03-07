@@ -7,7 +7,11 @@ MOTHERGOOSE_API_ENDPOINTS: list[dict[str, Any]] = [
     {"method": "GET", "path": "/health", "description": "Service health check", "auth": "none", "response": "200 OK with status"},
     # Eggs
     {"method": "GET", "path": "/eggs", "description": "List all EggConfigs", "auth": "bearer", "response": "list[EggConfig]"},
+    {"method": "POST", "path": "/eggs", "description": "Create or update an Egg configuration (called by Gosling CLI deploy)", "auth": "bearer", "response": "EggConfig"},
     {"method": "GET", "path": "/eggs/{egg_name}", "description": "Get a single EggConfig by name", "auth": "bearer", "response": "EggConfig"},
+    {"method": "GET", "path": "/eggs/{egg_name}/status", "description": "Get runner status for an egg including active_runners list", "auth": "bearer", "response": "EggStatusResponse"},
+    {"method": "GET", "path": "/eggs/{egg_name}/plans", "description": "List deployment plans for an egg", "auth": "bearer", "response": "list[DeploymentPlan]"},
+    {"method": "GET", "path": "/eggs/{egg_name}/plans/{plan_id}", "description": "Get a specific deployment plan by ID", "auth": "bearer", "response": "DeploymentPlan"},
     {"method": "POST", "path": "/eggs/{egg_name}/deploy", "description": "Trigger runner deployment for an egg", "auth": "bearer", "response": "202 Accepted"},
     # Runners
     {"method": "GET", "path": "/runners", "description": "List all runners, optional ?state= filter", "auth": "bearer", "response": "list[Runner]"},
@@ -36,13 +40,13 @@ MOTHERGOOSE_API_ENDPOINTS: list[dict[str, Any]] = [
         "auth": "none",
         "response": "200 OK",
     },
-    # Binaries
-    {"method": "GET", "path": "/admin/binaries/tofu", "description": "List available OpenTofu binary versions", "auth": "bearer", "response": "list[TofuVersion]"},
-    {"method": "POST", "path": "/admin/binaries/tofu", "description": "Download and register a new OpenTofu binary version", "auth": "bearer", "response": "TofuVersion"},
-    {"method": "PUT", "path": "/admin/binaries/tofu/{version_id}/activate", "description": "Activate a specific OpenTofu binary version", "auth": "bearer", "response": "200 OK"},
-    {"method": "GET", "path": "/admin/binaries/gosling", "description": "List available Gosling binary versions", "auth": "bearer", "response": "list[GoslingVersion]"},
-    {"method": "POST", "path": "/admin/binaries/gosling", "description": "Download and register a new Gosling binary version", "auth": "bearer", "response": "GoslingVersion"},
-    {"method": "PUT", "path": "/admin/binaries/gosling/{version_id}/activate", "description": "Activate a specific Gosling binary version", "auth": "bearer", "response": "200 OK"},
+    # Binaries (admin-only, binary_name must be "gosling" or "opentofu")
+    {"method": "GET", "path": "/admin/binaries", "description": "List all binary versions (gosling + opentofu)", "auth": "bearer (admin)", "response": "list[BinaryVersion]"},
+    {"method": "GET", "path": "/admin/binaries/{binary_name}/versions", "description": "List versions for a specific binary (gosling or opentofu)", "auth": "bearer (admin)", "response": "list[BinaryVersion]"},
+    {"method": "GET", "path": "/admin/binaries/{binary_name}/active", "description": "Get the currently active version for a binary", "auth": "bearer (admin)", "response": "BinaryVersion"},
+    {"method": "POST", "path": "/admin/binaries/upload", "description": "Upload a new binary version via multipart/form-data; writes to mounted S3 path", "auth": "bearer (admin)", "response": "BinaryVersion"},
+    {"method": "POST", "path": "/admin/binaries/{binary_name}/activate", "description": "Activate a specific version of a binary", "auth": "bearer (admin)", "response": "200 OK"},
+    {"method": "POST", "path": "/admin/binaries/{binary_name}/rollback", "description": "Roll back a binary to its previous active version", "auth": "bearer (admin)", "response": "200 OK"},
 ]
 
 MOTHERGOOSE_CELERY_TASKS: list[dict[str, Any]] = [
@@ -236,6 +240,18 @@ MOTHERGOOSE_SERVICES: list[dict[str, Any]] = [
         "methods": ["mount_s3_binaries()", "get_active_binary_path()", "verify_and_activate(version)"],
     },
     {
+        "name": "GoslingBinary / GoslingDownloadGithub / GoslingDownloadFromOtherSource",
+        "module": "services.gosling_binary",
+        "description": "Abstract base + concrete implementations for downloading and extracting Gosling CLI binaries. GoslingDownloadGithub fetches from GitHub releases (Polar-Gosling/gosling repo). GoslingDownloadFromOtherSource supports custom URLs with optional auth.",
+        "methods": ["store_downloaded_bin()", "_download_and_extract(extract_to)", "get_sha256_hash_of_bundle_from_github()", "get_packages_sha256_hash()"],
+    },
+    {
+        "name": "GoslingUpdateGithub / GoslingUpdateOtherSource",
+        "module": "services.gosling_binary",
+        "description": "Manages Gosling binary version lifecycle in the gosling_version DB table. GoslingUpdateGithub syncs from GitHub releases. GoslingUpdateOtherSource syncs from a custom URL. Both handle activation, deactivation, and rollback.",
+        "methods": ["sync_version()", "download_available_versions()", "check_required_actions()", "start_update()", "get_current_version()", "get_version_info()"],
+    },
+    {
         "name": "EggService",
         "module": "services.egg_service",
         "description": "CRUD operations for EggConfig records. Used by routers and git sync.",
@@ -247,9 +263,13 @@ MOTHERGOOSE_SERVICES: list[dict[str, Any]] = [
         "description": "Creates, stores, applies, and rolls back OpenTofu deployment plans.",
         "methods": ["create_plan(egg_name, config)", "apply_plan(plan_id)", "rollback(plan_id)"],
     },
-]
-
-MOTHERGOOSE_ENV_VARS: list[dict[str, Any]] = [
+    {
+        "name": "GitHubBinaryUploader",
+        "module": "services.github_binary_uploader",
+        "description": "Periodically checks GitHub for new Gosling and OpenTofu releases, downloads them to the mounted S3 filesystem, and stores version metadata. Does NOT auto-activate — activation is a manual admin action.",
+        "methods": ["check_latest_gosling_version()", "upload_gosling_from_github(version)", "check_latest_opentofu_version()"],
+    },
+]: list[dict[str, Any]] = [
     {"name": "MOTHERGOOSE_DB_BACKEND", "type": "str", "values": ["ydb", "dynamodb"], "description": "Database backend to use"},
     {"name": "MOTHERGOOSE_YDB_ENDPOINT", "type": "str", "description": "YDB gRPC endpoint (e.g. grpcs://ydb.serverless.yandexcloud.net:2135)"},
     {"name": "MOTHERGOOSE_YDB_DATABASE", "type": "str", "description": "YDB database path"},

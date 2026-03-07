@@ -118,7 +118,9 @@ func TestReportRunnerMetrics(t *testing.T) {
 func TestReportRunnerMetrics_ServerError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(`{"error":"bad payload"}`))
+		if _, err := w.Write([]byte(`{"error":"bad payload"}`)); err != nil {
+			return
+		}
 	}))
 	defer server.Close()
 

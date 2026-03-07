@@ -30,9 +30,9 @@ func init() {
 	rollbackCmd.Flags().StringVar(&rollbackEgg, "egg", "", "Egg name")
 	rollbackCmd.Flags().StringVar(&rollbackAPIURL, "api-url", "", "MotherGoose API URL")
 	rollbackCmd.Flags().StringVar(&rollbackAPIKey, "api-key", "", "MotherGoose API key")
-	rollbackCmd.MarkFlagRequired("egg")
-	rollbackCmd.MarkFlagRequired("api-url")
-	rollbackCmd.MarkFlagRequired("api-key")
+	mustMarkRequired(rollbackCmd, "egg")
+	mustMarkRequired(rollbackCmd, "api-url")
+	mustMarkRequired(rollbackCmd, "api-key")
 }
 
 func runRollback(cmd *cobra.Command, args []string) error {
@@ -78,7 +78,9 @@ func runRollback(cmd *cobra.Command, args []string) error {
 	fmt.Printf("\nRollback egg '%s' from %s to %s\n", rollbackEgg, currentPlan.ID[:8], targetPlan.ID[:8])
 	fmt.Print("Continue? (yes/no): ")
 	var response string
-	fmt.Scanln(&response)
+	if _, err := fmt.Scanln(&response); err != nil {
+		return fmt.Errorf("failed to read input: %w", err)
+	}
 	if response != "yes" && response != "y" {
 		fmt.Println("Rollback cancelled")
 		return nil

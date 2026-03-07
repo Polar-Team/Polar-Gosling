@@ -83,7 +83,9 @@ func TestGetEggStatus(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(status)
+		if err := json.NewEncoder(w).Encode(status); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 	}))
 	defer server.Close()
 
@@ -130,7 +132,9 @@ func TestListEggs(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(eggs)
+		if err := json.NewEncoder(w).Encode(eggs); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 	}))
 	defer server.Close()
 
@@ -208,7 +212,9 @@ func TestGetDeploymentPlan(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(plan)
+		if err := json.NewEncoder(w).Encode(plan); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 	}))
 	defer server.Close()
 
@@ -253,7 +259,9 @@ func TestListDeploymentPlans(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(plans)
+		if err := json.NewEncoder(w).Encode(plans); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 	}))
 	defer server.Close()
 
@@ -277,7 +285,9 @@ func TestListDeploymentPlans(t *testing.T) {
 func TestHTTPError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte(`{"error": "egg not found"}`))
+		if _, err := w.Write([]byte(`{"error": "egg not found"}`)); err != nil {
+			return
+		}
 	}))
 	defer server.Close()
 
@@ -314,7 +324,9 @@ func TestRetryLogic(t *testing.T) {
 			EggName: "test-egg",
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(status)
+		if err := json.NewEncoder(w).Encode(status); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 	}))
 	defer server.Close()
 
@@ -340,7 +352,9 @@ func TestNoRetryOn4xxErrors(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		attempts++
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(`{"error": "bad request"}`))
+		if _, err := w.Write([]byte(`{"error": "bad request"}`)); err != nil {
+			return
+		}
 	}))
 	defer server.Close()
 

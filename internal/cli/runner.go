@@ -48,8 +48,8 @@ func init() {
 	runnerCmd.Flags().StringVar(&runnerAPIKey, "api-key", "", "MotherGoose API key")
 	runnerCmd.Flags().DurationVar(&runnerMetricsInterval, "metrics-interval", 30*time.Second, "How often to report full metrics to MotherGoose")
 	runnerCmd.Flags().DurationVar(&runnerHeartbeatInterval, "heartbeat-interval", 30*time.Second, "How often to send heartbeat pings to MotherGoose")
-	runnerCmd.MarkFlagRequired("egg-name")
-	runnerCmd.MarkFlagRequired("token-secret")
+	mustMarkRequired(runnerCmd, "egg-name")
+	mustMarkRequired(runnerCmd, "token-secret")
 }
 
 func runRunner(cmd *cobra.Command, args []string) error {

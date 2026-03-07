@@ -11,10 +11,26 @@
       ],
       "disabled": false,
       "autoApprove": [
+        "get_mothergoose_api_endpoints",
+        "get_mothergoose_celery_tasks",
+        "get_mothergoose_models",
+        "get_mothergoose_services",
+        "get_mothergoose_env_vars",
+        "get_uglyfox_celery_tasks",
+        "get_uglyfox_config_schema",
+        "get_uglyfox_env_vars",
+        "get_gosling_commands",
         "get_fly_language_reference",
         "get_fly_examples",
-        "get_uglyfox_config_schema",
-        "get_uglyfox_env_vars"
+        "get_compute_module_variables",
+        "get_compute_module_outputs",
+        "get_compute_module_providers",
+        "get_secret_uri_schemes",
+        "get_database_schema",
+        "get_architecture_overview",
+        "get_steering_product",
+        "get_steering_structure",
+        "get_steering_tech"
       ]
     }
   }

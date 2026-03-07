@@ -685,7 +685,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - **Property 29: Environment Variable Injection**
   - **Validates: Requirements 12.7**
 
-- [ ] 24. Gosling CLI - Runner Mode Metrics
+- [x] 24. Gosling CLI - Runner Mode Metrics
   - Implement periodic metrics collection (CPU, memory, disk)
   - Create metrics reporting to runner_metrics table
   - Implement heartbeat mechanism

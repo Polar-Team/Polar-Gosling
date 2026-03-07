@@ -182,6 +182,19 @@ MOTHERGOOSE_MODELS: dict[str, Any] = {
             "metadata": {"type": "dict"},
         },
     },
+    "BinaryVersion": {
+        "description": "Tracks a specific version of a binary (gosling or opentofu) stored in S3.",
+        "fields": {
+            "id": {"type": "str", "description": "Unique identifier: {binary_name}-{version}"},
+            "binary_name": {"type": "str", "values": ["gosling", "opentofu"], "description": "Which binary this record tracks"},
+            "version": {"type": "str", "description": "Semantic version string (e.g. 1.2.3)"},
+            "s3_path": {"type": "str", "description": "S3 path to the binary file (e.g. gosling/1.2.3/gosling)"},
+            "sha256_checksum": {"type": "str", "description": "SHA256 hex digest of the binary"},
+            "is_active": {"type": "bool", "description": "Whether this version is currently active"},
+            "uploaded_at": {"type": "datetime", "description": "When the binary was uploaded to S3"},
+            "activated_at": {"type": "datetime | None", "description": "When this version was last activated"},
+        },
+    },
     "AuditLog": {
         "description": "Immutable audit trail for all system actions.",
         "fields": {
@@ -195,6 +208,7 @@ MOTHERGOOSE_MODELS: dict[str, Any] = {
         },
     },
 }
+
 
 MOTHERGOOSE_SERVICES: list[dict[str, Any]] = [
     {
@@ -228,28 +242,46 @@ MOTHERGOOSE_SERVICES: list[dict[str, Any]] = [
         "methods": ["render_templates(settings)", "generate_plan()", "apply_plan(plan)"],
     },
     {
-        "name": "OpenTofuBinary / OpenTofuDownloadGithub / OpenTofuDownloadFromOtherSource",
-        "module": "services.opentofu_binary",
-        "description": "Abstract base + concrete implementations for downloading and extracting OpenTofu binaries from GitHub releases or custom sources.",
-        "methods": ["store_downloaded_bin()", "_download_and_extract(extract_to)"],
+        "name": "Binary / DownloadGithub / DownloadFromOtherSource",
+        "module": "services.binary_service",
+        "description": "Generic abstract base + concrete implementations for downloading and extracting any binary from GitHub releases or custom URLs. Used by both OpenTofu and Gosling CLI wrappers. DownloadGithub fetches from GitHub releases with SHA256 verification. DownloadFromOtherSource supports custom URLs with optional Bearer/header auth.",
+        "methods": ["store_downloaded_bin()", "_download_and_extract(extract_to)", "get_sha256_hash_of_bundle_from_github()", "get_packages_sha256_hash()", "add_bin_info()", "get_bin_files_info()"],
     },
     {
-        "name": "GoslingBinaryManager",
-        "module": "services.gosling_manager",
-        "description": "Manages Gosling CLI binary versions: mounts from S3/object storage, verifies SHA256, activates a version for use by FlyParserService.",
-        "methods": ["mount_s3_binaries()", "get_active_binary_path()", "verify_and_activate(version)"],
+        "name": "Update / UpdateGithub / UpdateOtherSource",
+        "module": "services.binary_service",
+        "description": "Generic abstract base + concrete implementations for binary version lifecycle management in the binary_versions YDB table. UpdateGithub syncs from GitHub releases. UpdateOtherSource syncs from a custom URL. Both handle activation, deactivation, and rollback. Subclasses declare _table_name and _source.",
+        "methods": ["sync_version()", "download_available_versions()", "check_required_actions()", "start_update()", "get_current_version()", "get_version_info()", "_upsert_data_ydb()", "_deactivate_previous_versions()", "_latest_info_update()", "_rollback_info_update()"],
     },
     {
-        "name": "GoslingBinary / GoslingDownloadGithub / GoslingDownloadFromOtherSource",
-        "module": "services.gosling_binary",
-        "description": "Abstract base + concrete implementations for downloading and extracting Gosling CLI binaries. GoslingDownloadGithub fetches from GitHub releases (Polar-Gosling/gosling repo). GoslingDownloadFromOtherSource supports custom URLs with optional auth.",
-        "methods": ["store_downloaded_bin()", "_download_and_extract(extract_to)", "get_sha256_hash_of_bundle_from_github()", "get_packages_sha256_hash()"],
+        "name": "BinaryVersionService",
+        "module": "services.binary_version_service",
+        "description": "Service for managing binary versions (gosling and opentofu) in the binary_versions YDB table and S3. Handles listing, activating, uploading, and checksum verification. Used by the /admin/binaries API endpoints.",
+        "methods": ["list_versions(binary_name)", "get_active_version(binary_name)", "activate_version(version, binary_name, actor)", "upload_version(version, file_path, checksum, binary_name)", "verify_checksum(file_path, expected_checksum)"],
     },
     {
-        "name": "GoslingUpdateGithub / GoslingUpdateOtherSource",
-        "module": "services.gosling_binary",
-        "description": "Manages Gosling binary version lifecycle in the gosling_version DB table. GoslingUpdateGithub syncs from GitHub releases. GoslingUpdateOtherSource syncs from a custom URL. Both handle activation, deactivation, and rollback.",
-        "methods": ["sync_version()", "download_available_versions()", "check_required_actions()", "start_update()", "get_current_version()", "get_version_info()"],
+        "name": "VersionResolver",
+        "module": "services.version_resolver",
+        "description": "Resolves Gosling CLI and OpenTofu binary versions for Egg deployments. Resolution order: Egg-specific version > Active version > Fail with BinaryVersionNotFoundError.",
+        "methods": ["resolve_gosling_version(egg_version)", "resolve_opentofu_version(egg_version)"],
+    },
+    {
+        "name": "S3FSMountManager",
+        "module": "services.s3fs_mount_manager",
+        "description": "Manages S3 bucket access via s3fs (S3FileSystem). Provides filesystem-like read/write/copy/list operations over S3. Used by BinaryVersionService and GoslingBinaryManager to access binaries stored in S3 without explicit download.",
+        "methods": ["get_s3_path(relative_path)", "get_local_path(relative_path)", "exists(relative_path)", "read_bytes(relative_path)", "write_bytes(relative_path, content)", "copy_from_local(local_path, relative_path)", "list_directory(relative_path)"],
+    },
+    {
+        "name": "ServerlessRunnerDeploymentService",
+        "module": "services.serverless_runner_deployment",
+        "description": "Orchestrates serverless container runner deployment to Yandex Cloud Serverless Containers and AWS Lambda. Enforces 60-minute execution timeout with automatic cleanup. Uses OpenTofu + Compute Module for provisioning.",
+        "methods": ["deploy_serverless_runner(egg_name, cloud_provider, region, deployed_from_commit)", "cleanup_serverless_runner(runner_id, reason)", "enforce_timeout(runner_id)", "get_runner_logs(runner_id, cloud_provider)", "get_runner_metrics(runner_id)"],
+    },
+    {
+        "name": "VMPoolManager",
+        "module": "services.vm_pool_manager",
+        "description": "Manages Apex and Nadir VM runner pools. Enforces pool size limits (max_count/min_count), promotes Nadir→Apex on demand, demotes Apex→Nadir on idle timeout. Works with PoolConfig for per-pool settings.",
+        "methods": ["get_pool_counts(egg_name)", "can_add_apex_runner(egg_name)", "can_add_nadir_runner(egg_name)", "promote_nadir_to_apex(runner_id, reason)", "demote_apex_to_nadir(runner_id, reason)", "find_idle_apex_runners(egg_name)", "find_promotable_nadir_runners(egg_name, count)", "enforce_apex_pool_limits(egg_name)", "auto_promote_on_demand(egg_name, required_count)", "auto_demote_idle_runners(egg_name)"],
     },
     {
         "name": "EggService",
@@ -269,21 +301,34 @@ MOTHERGOOSE_SERVICES: list[dict[str, Any]] = [
         "description": "Periodically checks GitHub for new Gosling and OpenTofu releases, downloads them to the mounted S3 filesystem, and stores version metadata. Does NOT auto-activate — activation is a manual admin action.",
         "methods": ["check_latest_gosling_version()", "upload_gosling_from_github(version)", "check_latest_opentofu_version()"],
     },
-]: list[dict[str, Any]] = [
+]
+
+MOTHERGOOSE_ENV_VARS: list[dict[str, Any]] = [
     {"name": "MOTHERGOOSE_DB_BACKEND", "type": "str", "values": ["ydb", "dynamodb"], "description": "Database backend to use"},
     {"name": "MOTHERGOOSE_YDB_ENDPOINT", "type": "str", "description": "YDB gRPC endpoint (e.g. grpcs://ydb.serverless.yandexcloud.net:2135)"},
     {"name": "MOTHERGOOSE_YDB_DATABASE", "type": "str", "description": "YDB database path"},
+    {"name": "MOTHERGOOSE_YDB_CREDENTIAL_TYPE", "type": "str", "default": "metadata", "values": ["metadata", "service_account", "access_token", "static"], "description": "YDB credential type"},
+    {"name": "MOTHERGOOSE_YDB_SA_KEY_FILE", "type": "str", "description": "Service account key file path (when credential_type=service_account)"},
+    {"name": "MOTHERGOOSE_YDB_ACCESS_TOKEN", "type": "str", "description": "OAuth access token (when credential_type=access_token)"},
+    {"name": "MOTHERGOOSE_YDB_USERNAME", "type": "str", "description": "Static username (when credential_type=static, testing only)"},
+    {"name": "MOTHERGOOSE_YDB_PASSWORD", "type": "str", "description": "Static password (when credential_type=static, testing only)"},
     {"name": "MOTHERGOOSE_DYNAMODB_TABLE_PREFIX", "type": "str", "description": "Prefix for DynamoDB table names"},
     {"name": "MOTHERGOOSE_AWS_REGION", "type": "str", "description": "AWS region for DynamoDB/SQS/Secrets Manager"},
     {"name": "MOTHERGOOSE_CELERY_BROKER_URL", "type": "str", "description": "Celery broker URL (SQS or YMQ endpoint)"},
     {"name": "MOTHERGOOSE_CELERY_RESULT_BACKEND", "type": "str", "description": "Celery result backend URL"},
     {"name": "MOTHERGOOSE_NEST_REPO_URL_SECRET", "type": "str", "description": "Secret URI for the Nest Git repo URL"},
     {"name": "MOTHERGOOSE_NEST_REPO_BRANCH", "type": "str", "default": "main", "description": "Nest repo branch to sync"},
-    {"name": "MOTHERGOOSE_INTERNAL_SECRET_TOKEN", "type": "str", "description": "Token for /internal/* endpoints"},
+    {"name": "MOTHERGOOSE_NEST_PROJECT_ID", "type": "int", "description": "GitLab project ID of the Nest repository (used for accurate Nest webhook detection)"},
+    {"name": "MOTHERGOOSE_NEST_WEBHOOK_SECRET_URI", "type": "str", "default": "aws-sm://webhooks/nest-secret", "description": "Secret URI for the Nest repository webhook validation token"},
+    {"name": "MOTHERGOOSE_TRIGGER_AUTH_TOKEN", "type": "str", "description": "Token for /internal/* endpoints (cloud trigger authentication)"},
+    {"name": "MOTHERGOOSE_CORS_ORIGINS", "type": "str", "description": "Comma-separated list of allowed CORS origins (e.g. https://app.example.com). Defaults to localhost in development."},
     {"name": "MOTHERGOOSE_OPENTOFU_BINARY_PATH", "type": "str", "description": "Path to the active OpenTofu binary"},
-    {"name": "MOTHERGOOSE_GOSLING_BINARY_PATH", "type": "str", "description": "Path to the active Gosling CLI binary"},
+    {"name": "GOSLING_CLI_PATH", "type": "str", "default": "gosling", "description": "Path to the active Gosling CLI binary (used by FlyParserService subprocess calls)"},
+    {"name": "MOTHERGOOSE_S3_BUCKET", "type": "str", "description": "S3 bucket name for binary storage (mounted via s3fs)"},
+    {"name": "MOTHERGOOSE_S3_ENDPOINT_URL", "type": "str", "description": "Custom S3 endpoint URL (for Yandex Cloud Object Storage)"},
     {"name": "MOTHERGOOSE_SECRET_CACHE_TTL", "type": "int", "default": 300, "description": "Secret cache TTL in seconds"},
     {"name": "MOTHERGOOSE_LOG_LEVEL", "type": "str", "default": "INFO", "values": ["DEBUG", "INFO", "WARNING", "ERROR"]},
     {"name": "MOTHERGOOSE_YC_FOLDER_ID", "type": "str", "description": "Yandex Cloud folder ID for resource provisioning"},
     {"name": "MOTHERGOOSE_COMPUTE_MODULE_SOURCE", "type": "str", "description": "OpenTofu module source path or registry URL"},
+    {"name": "MOTHERGOOSE_APP_VERSION", "type": "str", "default": "0.1.3", "description": "Application version string"},
 ]

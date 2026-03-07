@@ -120,34 +120,25 @@ DATABASE_SCHEMA: dict[str, Any] = {
                 "details": {"type": "String", "description": "JSON blob with action-specific details"},
             },
         },
-        "tofu_versions": {
-            "description": "Registry of downloaded OpenTofu binary versions.",
-            "primary_key": "version_id",
+        "binary_versions": {
+            "description": "Unified registry of downloaded binary versions for both Gosling CLI and OpenTofu. Replaces the separate gosling_version and tofu_versions tables.",
+            "primary_key": "id",
             "columns": {
-                "version_id": {"type": "Utf8"},
+                "id": {"type": "Utf8", "description": "UUID — {binary_name}-{version}"},
+                "binary_name": {"type": "Utf8", "values": ["gosling", "opentofu"], "description": "Which binary this record tracks"},
                 "version": {"type": "Utf8", "description": "Semantic version string (e.g. 1.6.2)"},
-                "source": {"type": "Utf8", "values": ["github", "custom"], "description": "Download source"},
-                "downloaded_at": {"type": "Utf8"},
-                "sha256_hash": {"type": "Utf8"},
-                "active": {"type": "Bool", "description": "Whether this version is currently in use"},
-            },
-        },
-        "gosling_version": {
-            "description": "Registry of downloaded Gosling CLI binary versions.",
-            "primary_key": "version_id",
-            "columns": {
-                "version_id": {"type": "Utf8"},
-                "version": {"type": "Utf8"},
-                "source": {"type": "Utf8", "values": ["github", "custom"]},
-                "downloaded_at": {"type": "Utf8"},
-                "sha256_hash": {"type": "Utf8"},
-                "active": {"type": "Bool"},
+                "s3_path": {"type": "Utf8", "description": "S3 path to the binary (e.g. gosling/1.2.3/gosling)"},
+                "sha256_checksum": {"type": "Utf8", "description": "SHA256 hex digest of the binary"},
+                "is_active": {"type": "Int64", "description": "1 if active, 0 if inactive (YDB stores bool as Int64)"},
+                "uploaded_at": {"type": "Utf8", "format": "ISO 8601", "description": "When the binary was uploaded to S3"},
+                "activated_at": {"type": "Utf8", "format": "ISO 8601", "nullable": True, "description": "When this version was last activated"},
             },
         },
     },
     "relationships": [
         "runners.egg_name → egg_configs.name (logical FK)",
         "deployment_plans.egg_name → egg_configs.name (logical FK)",
+        "binary_versions.binary_name ∈ {gosling, opentofu} (discriminator column)",
     ],
 }
 

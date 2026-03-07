@@ -16,20 +16,28 @@ import (
 	"github.com/polar-gosling/gosling/internal/mothergoose"
 )
 
+// defaultHeartbeatInterval is how often the runner sends a liveness ping.
+const defaultHeartbeatInterval = 30 * time.Second
+
 // Config holds the configuration for a runner instance.
 type Config struct {
-	EggName        string
-	TokenSecretURI string
-	GitLabServer   string
-	Tags           []string
-	AgentVersion   string
-	MotherGooseURL string
-	APIKey         string
+	EggName           string
+	RunnerID          string
+	TokenSecretURI    string
+	GitLabServer      string
+	Tags              []string
+	AgentVersion      string
+	MotherGooseURL    string
+	APIKey            string
+	MetricsInterval   time.Duration
+	HeartbeatInterval time.Duration
 }
 
 // Manager manages the GitLab Runner Agent process lifecycle.
 type Manager struct {
-	Config       *Config
+	Config    *Config
+	Collector *MetricsCollector
+
 	GitLabClient *gitlab.Client
 	MGClient     mothergoose.MotherGooseClient
 	RegisteredID int
@@ -47,6 +55,7 @@ func New(cfg *Config) (*Manager, error) {
 	mgr := &Manager{
 		Config:       cfg,
 		GitLabClient: glClient,
+		Collector:    NewMetricsCollector(cfg.RunnerID, cfg.EggName, cfg.MetricsInterval, nil),
 	}
 
 	if cfg.MotherGooseURL != "" {
@@ -73,7 +82,9 @@ func (m *Manager) Run(ctx context.Context) error {
 	defer m.Deregister(ctx)
 
 	if m.MGClient != nil {
+		go m.Collector.Run(ctx)
 		go m.MetricsLoop(ctx)
+		go m.HeartbeatLoop(ctx)
 	}
 
 	return m.StartAgent(ctx)
@@ -235,26 +246,93 @@ func (m *Manager) StartAgent(ctx context.Context) error {
 	}
 }
 
-// ReportMetrics sends a heartbeat to MotherGoose via the API.
+// ReportMetrics collects the latest snapshot and sends it to MotherGoose.
 func (m *Manager) ReportMetrics(ctx context.Context) {
 	if m.MGClient == nil {
 		return
 	}
-	if _, err := m.MGClient.GetEggStatus(ctx, m.Config.EggName); err != nil {
+
+	snap := m.Collector.Latest()
+	runnerID := m.Config.RunnerID
+	if runnerID == "" {
+		runnerID = fmt.Sprintf("runner-%s", m.Config.EggName)
+	}
+
+	payload := mothergoose.RunnerMetricsPayload{
+		EggName:          snap.EggName,
+		State:            snap.State,
+		JobCount:         snap.JobCount,
+		CPUUsage:         snap.CPUUsage,
+		MemoryUsage:      snap.MemoryUsage,
+		DiskUsage:        snap.DiskUsage,
+		AgentVersion:     snap.AgentVersion,
+		FailureCount:     snap.FailureCount,
+		LastJobTimestamp: snap.LastJobTimestamp,
+	}
+
+	if err := m.MGClient.ReportRunnerMetrics(ctx, runnerID, payload); err != nil {
 		fmt.Printf("Warning: failed to report metrics: %v\n", err)
 	}
 }
 
 // MetricsLoop periodically calls ReportMetrics until ctx is cancelled.
 func (m *Manager) MetricsLoop(ctx context.Context) {
-	ticker := time.NewTicker(30 * time.Second)
+	interval := m.Config.MetricsInterval
+	if interval <= 0 {
+		interval = defaultMetricsInterval
+	}
+
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			m.ReportMetrics(ctx)
+		}
+	}
+}
+
+// SendHeartbeat sends a liveness ping to MotherGoose.
+func (m *Manager) SendHeartbeat(ctx context.Context) {
+	if m.MGClient == nil {
+		return
+	}
+
+	runnerID := m.Config.RunnerID
+	if runnerID == "" {
+		runnerID = fmt.Sprintf("runner-%s", m.Config.EggName)
+	}
+
+	snap := m.Collector.Latest()
+	payload := mothergoose.HeartbeatPayload{
+		EggName: m.Config.EggName,
+		State:   snap.State,
+	}
+
+	if err := m.MGClient.SendHeartbeat(ctx, runnerID, payload); err != nil {
+		fmt.Printf("Warning: failed to send heartbeat: %v\n", err)
+	}
+}
+
+// HeartbeatLoop periodically calls SendHeartbeat until ctx is cancelled.
+func (m *Manager) HeartbeatLoop(ctx context.Context) {
+	interval := m.Config.HeartbeatInterval
+	if interval <= 0 {
+		interval = defaultHeartbeatInterval
+	}
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			m.SendHeartbeat(ctx)
 		}
 	}
 }

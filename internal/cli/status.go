@@ -31,8 +31,8 @@ func init() {
 	statusCmd.Flags().BoolVar(&statusAll, "all", false, "Show all eggs")
 	statusCmd.Flags().StringVar(&statusAPIURL, "api-url", "", "MotherGoose API URL")
 	statusCmd.Flags().StringVar(&statusAPIKey, "api-key", "", "MotherGoose API key")
-	statusCmd.MarkFlagRequired("api-url")
-	statusCmd.MarkFlagRequired("api-key")
+	mustMarkRequired(statusCmd, "api-url")
+	mustMarkRequired(statusCmd, "api-key")
 }
 
 func runStatus(cmd *cobra.Command, args []string) error {

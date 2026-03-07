@@ -150,6 +150,30 @@ func (c *Client) ListDeploymentPlans(ctx context.Context, eggName string) ([]*de
 	return plans, nil
 }
 
+// SendHeartbeat sends a liveness ping to POST /runners/{id}/heartbeat.
+func (c *Client) SendHeartbeat(ctx context.Context, runnerID string, payload HeartbeatPayload) error {
+	url := fmt.Sprintf("%s/runners/%s/heartbeat", c.baseURL, runnerID)
+
+	err := c.doRequestWithRetry(ctx, "POST", url, payload, nil)
+	if err != nil {
+		return fmt.Errorf("failed to send heartbeat: %w", err)
+	}
+
+	return nil
+}
+
+// ReportRunnerMetrics posts a full metrics snapshot to POST /runners/{id}/metrics.
+func (c *Client) ReportRunnerMetrics(ctx context.Context, runnerID string, payload RunnerMetricsPayload) error {
+	url := fmt.Sprintf("%s/runners/%s/metrics", c.baseURL, runnerID)
+
+	err := c.doRequestWithRetry(ctx, "POST", url, payload, nil)
+	if err != nil {
+		return fmt.Errorf("failed to report runner metrics: %w", err)
+	}
+
+	return nil
+}
+
 // doRequestWithRetry performs an HTTP request with retry logic
 func (c *Client) doRequestWithRetry(ctx context.Context, method, url string, body interface{}, result interface{}) error {
 	var lastErr error

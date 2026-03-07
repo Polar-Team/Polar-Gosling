@@ -39,8 +39,8 @@ func init() {
 	deployCmd.Flags().StringVar(&deployRegion, "region", "", "Cloud region")
 	deployCmd.Flags().StringVar(&deployAPIURL, "api-url", "", "MotherGoose API URL")
 	deployCmd.Flags().StringVar(&deployAPIKey, "api-key", "", "MotherGoose API key")
-	deployCmd.MarkFlagRequired("api-url")
-	deployCmd.MarkFlagRequired("api-key")
+	mustMarkRequired(deployCmd, "api-url")
+	mustMarkRequired(deployCmd, "api-key")
 }
 
 func runDeploy(cmd *cobra.Command, args []string) error {

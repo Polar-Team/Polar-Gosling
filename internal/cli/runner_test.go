@@ -84,7 +84,9 @@ func TestRunnerTagBasedRouting(t *testing.T) {
 		prop.ForAll(
 			func(runnerTags []string, jobTags []string) bool {
 				router := &runner.TagRouter{RunnerTags: runnerTags}
-				return router.CanRoute(jobTags) == router.CanRoute(jobTags)
+				first := router.CanRoute(jobTags)
+				second := router.CanRoute(jobTags)
+				return first == second
 			},
 			genTagSet(),
 			genTagSet(),

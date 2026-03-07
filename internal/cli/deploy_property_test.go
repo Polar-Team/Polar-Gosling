@@ -84,6 +84,14 @@ func (m *MockMotherGooseClient) ListDeploymentPlans(ctx context.Context, eggName
 	return []*deployer.DeploymentPlan{}, nil
 }
 
+func (m *MockMotherGooseClient) SendHeartbeat(_ context.Context, _ string, _ mothergoose.HeartbeatPayload) error {
+	return nil
+}
+
+func (m *MockMotherGooseClient) ReportRunnerMetrics(_ context.Context, _ string, _ mothergoose.RunnerMetricsPayload) error {
+	return nil
+}
+
 // Feature: gitops-runner-orchestration, Property 24: Dry-Run Non-Modification
 // Validates: Requirements 10.8
 func TestDryRunNonModification(t *testing.T) {

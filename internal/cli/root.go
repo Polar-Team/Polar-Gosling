@@ -32,6 +32,14 @@ func Execute() {
 	}
 }
 
+// mustMarkRequired marks a flag as required and panics if the flag doesn't exist.
+// This is intentional: missing required flags are programming errors caught at startup.
+func mustMarkRequired(cmd *cobra.Command, flag string) {
+	if err := cmd.MarkFlagRequired(flag); err != nil {
+		panic(fmt.Sprintf("failed to mark flag %q as required on %q: %v", flag, cmd.Name(), err))
+	}
+}
+
 func init() {
 	// Set version template
 	rootCmd.SetVersionTemplate(fmt.Sprintf("Gosling version %s (commit: %s, built: %s)\n", Version, GitCommit, BuildDate))

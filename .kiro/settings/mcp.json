@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "polar-gosling": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "MCP",
+        "run",
+        "python",
+        "server.py"
+      ],
+      "disabled": false,
+      "autoApprove": []
+    }
+  }
+}

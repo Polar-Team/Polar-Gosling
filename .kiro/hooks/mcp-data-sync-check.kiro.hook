@@ -1,0 +1,15 @@
+{
+  "version": "1.0.0",
+  "enabled": false,
+  "name": "MCP Data Sync Check",
+  "description": "When backend services, compute module, or CLI code changes, check if MCP datasets need updating to reflect the changes",
+  "when": {
+    "type": "userTriggered"
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "A file in the Polar Gosling codebase was just modified. Review the changes and determine if any MCP server datasets in Polar-Gosling/MCP/data/ need to be updated to reflect:\n1. New/changed API endpoints, Celery tasks, models, or services in MotherGoose/UglyFox\n2. New/changed Terraform variables, outputs, or resources in Compute Module\n3. New/changed CLI commands or .fly language features in Gosling CLI\n4. Changes to environment variables, database schema, or architecture\nIf updates are needed, identify which specific data files in MCP/data/ should be modified and what changes are required. If no MCP updates are needed, briefly confirm and continue."
+  },
+  "workspaceFolderName": "Polar-Gosling",
+  "shortName": "mcp-data-sync-check"
+}

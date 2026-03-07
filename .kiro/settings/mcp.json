@@ -10,7 +10,12 @@
         "server.py"
       ],
       "disabled": false,
-      "autoApprove": []
+      "autoApprove": [
+        "get_fly_language_reference",
+        "get_fly_examples",
+        "get_uglyfox_config_schema",
+        "get_uglyfox_env_vars"
+      ]
     }
   }
 }

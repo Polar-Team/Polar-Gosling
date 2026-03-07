@@ -643,13 +643,13 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - _Requirements: 7.1_
 
 
-- [ ] 21. UglyFox Backend - Policy Engine
+- [x] 21. UglyFox Backend - Policy Engine
   - Implement policy evaluation engine
   - Parse UF/config.fly for pruning policies
   - Create policy condition evaluator
   - _Requirements: 7.2, 7.4_
 
-- [ ] 22. UglyFox Backend - Runner Lifecycle Management
+- [x] 22. UglyFox Backend - Runner Lifecycle Management
   - Implement runner health monitoring
   - Create failure threshold termination logic
   - Implement age-based termination
@@ -657,15 +657,15 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Implement audit logging
   - _Requirements: 7.1, 7.3, 7.4, 7.5, 7.6, 7.7_
 
-- [ ] 22.1 Write property test for failure threshold termination
+- [x] 22.1 Write property test for failure threshold termination
   - **Property 17: UglyFox Failure Threshold Termination**
   - **Validates: Requirements 7.3**
 
-- [ ] 22.2 Write property test for age-based termination
+- [x] 22.2 Write property test for age-based termination
   - **Property 18: UglyFox Age-Based Termination**
   - **Validates: Requirements 7.5**
 
-- [ ] 22.3 Write property test for audit logging
+- [x] 22.3 Write property test for audit logging
   - **Property 19: UglyFox Audit Logging**
   - **Validates: Requirements 7.7**
 

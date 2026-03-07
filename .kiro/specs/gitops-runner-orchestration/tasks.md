@@ -692,6 +692,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - _Requirements: 15.1, 15.2, 15.3, 15.4, 15.5_
 
 - [ ] 25. Rift Server - Core Implementation
+  - **Repo**: `Polar-Gosling` (Go monorepo), under `cmd/rift/` and `internal/rift/`
   - Implement Docker API proxy
   - Create artifact caching system
   - Implement LRU cache eviction

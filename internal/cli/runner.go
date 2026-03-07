@@ -6,19 +6,23 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/polar-gosling/gosling/internal/runner"
 	"github.com/spf13/cobra"
 )
 
 var (
-	runnerEggName        string
-	runnerTokenSecret    string
-	runnerGitLabServer   string
-	runnerTags           string
-	runnerAgentVersion   string
-	runnerMotherGooseURL string
-	runnerAPIKey         string
+	runnerEggName           string
+	runnerID                string
+	runnerTokenSecret       string
+	runnerGitLabServer      string
+	runnerTags              string
+	runnerAgentVersion      string
+	runnerMotherGooseURL    string
+	runnerAPIKey            string
+	runnerMetricsInterval   time.Duration
+	runnerHeartbeatInterval time.Duration
 )
 
 var runnerCmd = &cobra.Command{
@@ -35,12 +39,15 @@ lifecycle, synchronizes the agent version, and reports health metrics.`,
 func init() {
 	rootCmd.AddCommand(runnerCmd)
 	runnerCmd.Flags().StringVar(&runnerEggName, "egg-name", "", "Name of the Egg this runner belongs to")
+	runnerCmd.Flags().StringVar(&runnerID, "runner-id", "", "Unique runner ID (defaults to runner-<egg-name>)")
 	runnerCmd.Flags().StringVar(&runnerTokenSecret, "token-secret", "", "Secret URI for the GitLab runner token (e.g., yc-lockbox://gitlab/gitlab.com/my-app/runner-token)")
 	runnerCmd.Flags().StringVar(&runnerGitLabServer, "gitlab-server", "gitlab.com", "GitLab server FQDN")
 	runnerCmd.Flags().StringVar(&runnerTags, "tags", "", "Comma-separated runner tags")
 	runnerCmd.Flags().StringVar(&runnerAgentVersion, "agent-version", "", "Required GitLab Runner Agent version (uses latest if not specified)")
 	runnerCmd.Flags().StringVar(&runnerMotherGooseURL, "mothergoose-url", "", "MotherGoose API URL for metrics reporting")
 	runnerCmd.Flags().StringVar(&runnerAPIKey, "api-key", "", "MotherGoose API key")
+	runnerCmd.Flags().DurationVar(&runnerMetricsInterval, "metrics-interval", 30*time.Second, "How often to report full metrics to MotherGoose")
+	runnerCmd.Flags().DurationVar(&runnerHeartbeatInterval, "heartbeat-interval", 30*time.Second, "How often to send heartbeat pings to MotherGoose")
 	runnerCmd.MarkFlagRequired("egg-name")
 	runnerCmd.MarkFlagRequired("token-secret")
 }
@@ -50,13 +57,16 @@ func runRunner(cmd *cobra.Command, args []string) error {
 	defer cancel()
 
 	cfg := &runner.Config{
-		EggName:        runnerEggName,
-		TokenSecretURI: runnerTokenSecret,
-		GitLabServer:   runnerGitLabServer,
-		Tags:           runner.ParseTags(runnerTags),
-		AgentVersion:   runnerAgentVersion,
-		MotherGooseURL: runnerMotherGooseURL,
-		APIKey:         runnerAPIKey,
+		EggName:           runnerEggName,
+		RunnerID:          runnerID,
+		TokenSecretURI:    runnerTokenSecret,
+		GitLabServer:      runnerGitLabServer,
+		Tags:              runner.ParseTags(runnerTags),
+		AgentVersion:      runnerAgentVersion,
+		MotherGooseURL:    runnerMotherGooseURL,
+		APIKey:            runnerAPIKey,
+		MetricsInterval:   runnerMetricsInterval,
+		HeartbeatInterval: runnerHeartbeatInterval,
 	}
 
 	mgr, err := runner.New(cfg)

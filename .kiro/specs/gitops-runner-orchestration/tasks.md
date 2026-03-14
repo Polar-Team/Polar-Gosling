@@ -691,23 +691,24 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Implement heartbeat mechanism
   - _Requirements: 15.1, 15.2, 15.3, 15.4, 15.5_
 
-- [ ] 25. Rift Server - Core Implementation
+- [x] 25. Rift Server - Core Implementation
   - **Repo**: `Polar-Gosling` (Go monorepo), under `cmd/rift/` and `internal/rift/`
-  - Implement Docker API proxy
-  - Create artifact caching system
-  - Implement LRU cache eviction
-  - Add authentication for runner access
+  - Create docker incoming remote context from runner sessions handling
+  - No need to store runners cache it will be stored at s3 from runner.
+  - Create docker images storing at s3 storage (tarballs), when rift vm server create/destroy. Rift server should have persistent SSD disks.
+  - Create scheduling orchestration system - scheduling on demand(when eggs request reached server), on schedule status of on/off and create/destroy when idle timer.
+  - Put SSH access hash keys to rift server to DB under eggs information - inject that value in runner, runners should be preconfigured to use it.
   - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6_
 
-- [ ] 25.1 Write property test for Rift cache hit behavior
+- [x] 25.1 Write property test for Rift cache hit behavior
   - **Property 20: Rift Cache Hit Behavior**
   - **Validates: Requirements 8.4**
 
-- [ ] 25.2 Write property test for Rift authentication
+- [x] 25.2 Write property test for Rift authentication
   - **Property 21: Rift Authentication Enforcement**
   - **Validates: Requirements 8.6**
 
-- [ ] 25.3 Write property test for Rift optional dependency
+- [x] 25.3 Write property test for Rift optional dependency
   - **Property 22: Rift Optional Dependency**
   - **Validates: Requirements 8.7**
 

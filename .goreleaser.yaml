@@ -34,11 +34,58 @@ builds:
       - -X github.com/polar-gosling/gosling/internal/cli.GitCommit={{.Commit}}
       - -X github.com/polar-gosling/gosling/internal/cli.BuildDate={{.Date}}
 
+  - id: rift
+    main: ./cmd/rift
+    binary: rift
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+      - arm
+    goarm:
+      - "7"
+    ignore:
+      - goos: windows
+        goarch: arm
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X github.com/polar-gosling/gosling/internal/cli.Version={{.Version}}
+      - -X github.com/polar-gosling/gosling/internal/cli.GitCommit={{.Commit}}
+      - -X github.com/polar-gosling/gosling/internal/cli.BuildDate={{.Date}}
+
 archives:
   - id: gosling
+    builds:
+      - gosling
     format: tar.gz
     name_template: >-
       {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+      - LICENSE*
+
+  - id: rift
+    builds:
+      - rift
+    format: tar.gz
+    name_template: >-
+      rift_
       {{- .Version }}_
       {{- title .Os }}_
       {{- if eq .Arch "amd64" }}x86_64
@@ -65,7 +112,7 @@ changelog:
   filters:
     exclude:
       - "^docs:"
-      - "^test:"
+      {{- .Version }}_
       - "^chore:"
       - "typo"
   groups:

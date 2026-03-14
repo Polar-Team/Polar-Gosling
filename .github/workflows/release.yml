@@ -13,6 +13,7 @@ permissions:
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
+    if: github.ref_type == 'tag' && github.event.base_ref == 'refs/heads/main'
     outputs:
       hashes: ${{ steps.hash.outputs.hashes }}
       image: ${{ steps.image.outputs.image }}
@@ -51,6 +52,7 @@ jobs:
 
   provenance:
     needs: [goreleaser]
+    if: github.ref_type == 'tag'
     permissions:
       actions: read
       id-token: write
@@ -63,6 +65,7 @@ jobs:
 
   sign:
     needs: [goreleaser]
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -105,6 +108,7 @@ jobs:
 
   verify:
     needs: [goreleaser, provenance, sign]
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

@@ -723,7 +723,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - **Validates: Requirements 12.6**
 
 
-- [ ] 27. Self-Management Jobs
+- [x] 27. Self-Management Jobs
   - Implement job scheduling using GitLab scheduled pipelines (not Celery Beat)
   - Create GitLab scheduled pipeline configuration for Nest repository
   - Create GitLab runner tokens for Job runners
@@ -738,7 +738,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Job runners are for lightweight self-management tasks only (secret rotation, config updates)
   - _Requirements: 13.1, 13.2, 13.3, 13.4, 13.5, 13.6, 13.7_
 
-- [ ] 27.1 Write property test for cron job scheduling
+- [x] 27.1 Write property test for cron job scheduling
   - **Property 30: Cron Job Scheduling**
   - **Validates: Requirements 13.7**
 

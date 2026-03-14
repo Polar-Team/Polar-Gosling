@@ -1,0 +1,13 @@
+{
+  "version": "1.0.0",
+  "enabled": true,
+  "name": "Docs Website Data Sync Check",
+  "description": "Update docs website with actual data according new commands and functionality of servers.",
+  "when": {
+    "type": "userTriggered"
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "A file in the Polar Gosling codebase was just modified. Review the changes and determine if any index.html in Polar-Gosling/docs/index.html need to be updated to reflect:\n1. New/changed API endpoints, Celery tasks, models, or services in MotherGoose/UglyFox\n2. New/changed Terraform variables, outputs, or resources in Compute Module\n3. New/changed CLI commands or .fly language features in Gosling CLI\n4. Changes to environment variables, database schema, or architecture\nIf updates are needed, identify which specific data  in Polar-Gosling/docs/index.html should be modified and what changes are required. If no index.html updates are needed, briefly confirm and continue."
+  }
+}

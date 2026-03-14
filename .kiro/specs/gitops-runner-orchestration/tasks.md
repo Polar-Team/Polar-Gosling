@@ -712,13 +712,13 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - **Property 22: Rift Optional Dependency**
   - **Validates: Requirements 8.7**
 
-- [ ] 26. Configuration Management
+- [x] 26. Configuration Management
   - Implement Egg configuration storage and retrieval
   - Create configuration update propagation
   - Implement environment variable injection
   - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6, 12.7_
 
-- [ ] 26.1 Write property test for Egg config update propagation
+- [x] 26.1 Write property test for Egg config update propagation
   - **Property 28: Egg Config Update Propagation**
   - **Validates: Requirements 12.6**
 

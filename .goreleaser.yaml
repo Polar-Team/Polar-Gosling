@@ -61,9 +61,9 @@ builds:
 
 archives:
   - id: gosling
-    builds:
+    ids:
       - gosling
-    format: tar.gz
+    formats: tar.gz
     name_template: >-
       {{ .ProjectName }}_
       {{- .Version }}_
@@ -74,15 +74,15 @@ archives:
       {{- if .Arm }}v{{ .Arm }}{{ end }}
     format_overrides:
       - goos: windows
-        format: zip
+        formats: zip
     files:
       - README.md
       - LICENSE*
 
   - id: rift
-    builds:
+    ids:
       - rift
-    format: tar.gz
+    formats: tar.gz
     name_template: >-
       rift_
       {{- .Version }}_
@@ -93,7 +93,7 @@ archives:
       {{- if .Arm }}v{{ .Arm }}{{ end }}
     format_overrides:
       - goos: windows
-        format: zip
+        formats: zip
     files:
       - README.md
       - LICENSE*

@@ -230,14 +230,12 @@ egg "my-app" {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create temporary file
 			tmpDir := t.TempDir()
 			tmpFile := filepath.Join(tmpDir, "config.fly")
 			if err := os.WriteFile(tmpFile, []byte(tt.content), 0644); err != nil {
 				t.Fatalf("Failed to create temp file: %v", err)
 			}
 
-			// Parse the file
 			config, err := parser.ParseAndValidate(tmpFile)
 			if err != nil {
 				if !tt.expectError {
@@ -246,7 +244,6 @@ egg "my-app" {
 				return
 			}
 
-			// Validate type if specified
 			if tt.configType != "" {
 				err := validateConfigType(config, tt.configType)
 				if tt.expectError && err == nil {
@@ -260,10 +257,8 @@ egg "my-app" {
 				}
 			}
 
-			// Convert to JSON
 			jsonData := configToJSON(config)
 
-			// Verify JSON structure
 			if jsonData == nil {
 				t.Fatal("JSON data is nil")
 			}
@@ -277,7 +272,6 @@ egg "my-app" {
 				t.Fatal("No blocks in JSON output")
 			}
 
-			// Verify first block has expected type
 			firstBlock := blocks[0]
 			blockType, ok := firstBlock["type"].(string)
 			if !ok {
@@ -288,7 +282,6 @@ egg "my-app" {
 				t.Errorf("Expected block type %q, got %q", tt.configType, blockType)
 			}
 
-			// For egg, job, eggsbucket, and mothergoose, we expect labels (except uglyfox and mothergoose)
 			if tt.configType != "uglyfox" && tt.configType != "mothergoose" {
 				labels, ok := firstBlock["labels"].([]string)
 				if !ok {
@@ -299,13 +292,11 @@ egg "my-app" {
 				}
 			}
 
-			// Verify JSON can be marshaled
 			jsonBytes, err := json.Marshal(jsonData)
 			if err != nil {
 				t.Fatalf("Failed to marshal JSON: %v", err)
 			}
 
-			// Verify JSON can be unmarshaled
 			var unmarshaled map[string]interface{}
 			if err := json.Unmarshal(jsonBytes, &unmarshaled); err != nil {
 				t.Fatalf("Failed to unmarshal JSON: %v", err)
@@ -375,7 +366,6 @@ func TestValueToJSON(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := valueToJSON(tt.value)
 
-			// Compare based on type
 			switch expected := tt.expected.(type) {
 			case string:
 				if result != expected {
@@ -436,12 +426,10 @@ func TestBlockToJSON(t *testing.T) {
 
 	result := blockToJSON(block)
 
-	// Verify type
 	if result["type"] != "egg" {
 		t.Errorf("Expected type 'egg', got %v", result["type"])
 	}
 
-	// Verify labels
 	labels, ok := result["labels"].([]string)
 	if !ok {
 		t.Fatal("Labels is not a string slice")
@@ -450,7 +438,6 @@ func TestBlockToJSON(t *testing.T) {
 		t.Errorf("Expected labels ['my-app'], got %v", labels)
 	}
 
-	// Verify attributes
 	attrs, ok := result["attributes"].(map[string]interface{})
 	if !ok {
 		t.Fatal("Attributes is not a map")
@@ -459,7 +446,6 @@ func TestBlockToJSON(t *testing.T) {
 		t.Errorf("Expected type attribute 'vm', got %v", attrs["type"])
 	}
 
-	// Verify nested blocks
 	blocks, ok := result["blocks"].([]map[string]interface{})
 	if !ok {
 		t.Fatal("Blocks is not a slice of maps")
@@ -490,16 +476,13 @@ func TestConfigToJSON(t *testing.T) {
 
 	result := configToJSON(config)
 
-	// Verify blocks field exists
 	blocks, ok := result["blocks"].([]map[string]interface{})
 	if !ok {
 		t.Fatal("blocks field is not a slice of maps")
 	}
-
 	if len(blocks) != 1 {
 		t.Errorf("Expected 1 block, got %d", len(blocks))
 	}
-
 	if blocks[0]["type"] != "egg" {
 		t.Errorf("Expected block type 'egg', got %v", blocks[0]["type"])
 	}
@@ -556,7 +539,6 @@ func TestValidateConfigType(t *testing.T) {
 }
 
 func TestParseCommandOutput(t *testing.T) {
-	// Create a temporary file with egg config
 	content := `
 egg "test-app" {
   type = "vm"
@@ -591,7 +573,6 @@ egg "test-app" {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
 
-	// Parse and convert to JSON
 	config, err := parser.ParseAndValidate(tmpFile)
 	if err != nil {
 		t.Fatalf("Parse failed: %v", err)
@@ -599,7 +580,6 @@ egg "test-app" {
 
 	jsonData := configToJSON(config)
 
-	// Marshal to JSON bytes
 	var buf bytes.Buffer
 	encoder := json.NewEncoder(&buf)
 	encoder.SetIndent("", "  ")
@@ -607,18 +587,15 @@ egg "test-app" {
 		t.Fatalf("Failed to encode JSON: %v", err)
 	}
 
-	// Verify JSON is valid
 	var unmarshaled map[string]interface{}
 	if err := json.Unmarshal(buf.Bytes(), &unmarshaled); err != nil {
 		t.Fatalf("Failed to unmarshal JSON: %v", err)
 	}
 
-	// Verify structure
 	blocks, ok := unmarshaled["blocks"].([]interface{})
 	if !ok {
 		t.Fatal("blocks field is not a slice")
 	}
-
 	if len(blocks) != 1 {
 		t.Errorf("Expected 1 block, got %d", len(blocks))
 	}
@@ -627,18 +604,14 @@ egg "test-app" {
 	if !ok {
 		t.Fatal("First block is not a map")
 	}
-
 	if firstBlock["type"] != "egg" {
 		t.Errorf("Expected type 'egg', got %v", firstBlock["type"])
 	}
 
-	// Verify nested blocks exist
 	nestedBlocks, ok := firstBlock["blocks"].([]interface{})
 	if !ok {
 		t.Fatal("Nested blocks field is not a slice")
 	}
-
-	// Should have cloud, resources, runner, gitlab blocks
 	if len(nestedBlocks) < 4 {
 		t.Errorf("Expected at least 4 nested blocks, got %d", len(nestedBlocks))
 	}

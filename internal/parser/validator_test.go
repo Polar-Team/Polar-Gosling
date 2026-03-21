@@ -29,7 +29,7 @@ egg "my-app" {
   gitlab {
     project_id = 12345
     token_secret = "vault://gitlab/runner-token"
-		server_name = "example.com"
+    server_name = "example.com"
   }
 }
 `)
@@ -69,7 +69,7 @@ egg "my-app" {
   gitlab {
     project_id = 12345
     token_secret = "vault://gitlab/runner-token"
-		server_name = "example.com"
+    server_name = "example.com"
   }
 }
 `)
@@ -86,7 +86,6 @@ egg "my-app" {
 		t.Error("Expected validation to fail for missing type attribute")
 	}
 
-	// Check that error mentions 'type'
 	found := false
 	for _, err := range result.Errors {
 		if err.Field == "type" {
@@ -123,7 +122,7 @@ egg "my-app" {
   gitlab {
     project_id = 12345
     token_secret = "vault://gitlab/runner-token"
-		server_name = "example.com"
+    server_name = "example.com"
   }
 }
 `)
@@ -165,7 +164,7 @@ egg "my-app" {
   gitlab {
     project_id = 12345
     token_secret = "vault://gitlab/runner-token"
-		server_name = "example.com"
+    server_name = "example.com"
   }
 }
 `)
@@ -207,7 +206,7 @@ egg "my-app" {
   gitlab {
     project_id = 12345
     token_secret = "vault://gitlab/runner-token"
-		server_name = "example.com"
+    server_name = "example.com"
   }
 }
 `)
@@ -461,7 +460,7 @@ egg "123-invalid" {
   gitlab {
     project_id = 12345
     token_secret = "vault://gitlab/runner-token"
-		server_name = "example.com"
+    server_name = "example.com"
   }
 }
 `)

@@ -138,18 +138,21 @@
 
     /* Tablet */
     @media (max-width: 1024px) {
-      .sidebar { width: 220px; }
       .content { padding: 2.5rem 2.5rem; }
       .hero { padding: 2.5rem 2rem; }
     }
 
-    /* Mobile */
-    @media (max-width: 768px) {
+    /* Mobile — sidebar collapses into drawer */
+    @media (max-width: 996px) {
       .nav-links { display: none; }
       .nav-hamburger { display: block; }
       .nav { padding: 0 1.25rem; }
       .sidebar { display: none; }
-      .content { padding: 1.5rem 1.25rem; }
+      .content { padding: 1.5rem 1.25rem; max-width: 100%; }
+    }
+
+    /* Small mobile */
+    @media (max-width: 768px) {
       .hero { padding: 2rem 1.25rem; border-radius: 8px; }
       .hero h1 { font-size: 1.8rem; }
       .hero p { font-size: 0.95rem; }

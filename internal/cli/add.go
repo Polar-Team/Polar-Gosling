@@ -275,33 +275,33 @@ func generateEggConfig(name, runnerType, provider, region string) string {
 
 egg "%s" {
   type = "%s"
-  
+
   cloud {
     provider = "%s"
     region   = "%s"
   }
-  
+
   resources {
     cpu    = %d
     memory = %d  # MB
     disk   = %d  # GB
   }
-  
+
   runner {
     tags       = ["docker", "linux"]
     concurrent = %d
     idle_timeout = "10m"
   }
-  
+
   gitlab {
     # TODO: Set your GitLab project ID
     project_id = 0
-    
+
     # TODO: Set your GitLab runner token secret
     # Format: yc-lockbox://{secret-id}/{key} or aws-sm://{secret-name}/{key}
     token_secret = "%s-lockbox://gitlab-tokens/%s-runner-token"
   }
-  
+
   environment {
     DOCKER_DRIVER = "overlay2"
     # Add custom environment variables here
@@ -325,26 +325,26 @@ func generateJobConfig(name, schedule string) string {
 # Self-management task for Nest repository
 
 job "%s" {%s%s
-  
+
   runner {
     type = "vm"
     tags = ["privileged"]
   }
-  
+
   script = <<-EOT
     #!/bin/bash
     set -e
-    
+
     # TODO: Add your job script here
     echo "Running job: %s"
-    
+
     # Example: Rotate secrets
     # gosling rotate-tokens --all
-    
+
     # Example: Update runner images
     # gosling update-images --latest
   EOT
-  
+
   on_failure {
     # TODO: Add notification email addresses
     notify = ["ops@example.com"]
@@ -373,17 +373,20 @@ func findNestRoot() (string, error) {
 	}
 
 	for {
-		// Check if this directory has Eggs, Jobs, and UF subdirectories
+		// Check if this directory has Eggs, Jobs, UF and MG subdirectories
 		eggsPath := filepath.Join(dir, "Eggs")
 		jobsPath := filepath.Join(dir, "Jobs")
 		ufPath := filepath.Join(dir, "UF")
+		mgPath := filepath.Join(dir, "MG")
 
 		eggsInfo, eggsErr := os.Stat(eggsPath)
 		jobsInfo, jobsErr := os.Stat(jobsPath)
 		ufInfo, ufErr := os.Stat(ufPath)
+		mgInfo, mgErr := os.Stat(mgPath)
 
 		if eggsErr == nil && eggsInfo.IsDir() &&
 			jobsErr == nil && jobsInfo.IsDir() &&
+			mgErr == nil && mgInfo.IsDir() &&
 			ufErr == nil && ufInfo.IsDir() {
 			return dir, nil
 		}

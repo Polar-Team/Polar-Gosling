@@ -68,11 +68,9 @@ func NewValidator(config *Config) *Validator {
 
 // Validate performs validation on the configuration
 func (v *Validator) Validate() *ValidationResult {
-	// Validate each top-level block
 	for _, block := range v.config.Blocks {
 		v.validateBlock(&block)
 	}
-
 	return v.result
 }
 
@@ -95,646 +93,424 @@ func (v *Validator) validateBlock(block *Block) {
 	}
 }
 
-// validateEggBlock validates an egg configuration block
+// validateEggBlock validates an egg configuration block.
+// Schema: flat attributes — no nested cloud/resources/runner/gitlab blocks.
 func (v *Validator) validateEggBlock(block *Block) {
-	// Egg must have exactly one label (the name)
 	if len(block.Labels) != 1 {
 		v.result.AddError(block.Position, "labels",
 			"egg block must have exactly one label (the egg name)")
 		return
 	}
-
-	// Validate egg name format (alphanumeric, hyphens, underscores)
-	eggName := block.Labels[0]
-	if !isValidIdentifier(eggName) {
+	if !isValidIdentifier(block.Labels[0]) {
 		v.result.AddError(block.Position, "name",
-			fmt.Sprintf("invalid egg name %q: must contain only alphanumeric characters, hyphens, and underscores", eggName))
+			fmt.Sprintf("invalid egg name %q: must start with a letter and contain only alphanumeric characters, hyphens, and underscores", block.Labels[0]))
 	}
 
-	// Validate required attribute: type
-	typeVal, ok := block.GetAttribute("type")
-	if !ok {
-		v.result.AddError(block.Position, "type", "egg block must have a 'type' attribute")
-	} else {
-		typeStr, err := typeVal.AsString()
-		if err != nil {
-			v.result.AddError(typeVal.Position, "type", "type must be a string")
-		} else if typeStr != "vm" && typeStr != "serverless" {
-			v.result.AddError(typeVal.Position, "type",
-				fmt.Sprintf("type must be 'vm' or 'serverless', got %q", typeStr))
+	// Required string attributes
+	v.validateRequiredString(block, "gitlab_server")
+	v.validateRequiredString(block, "region")
+
+	// Required secret URIs
+	v.validateRequiredSecretURI(block, "gitlab_token_secret")
+	v.validateRequiredSecretURI(block, "gitlab_webhook_secret")
+	v.validateRequiredSecretURI(block, "git_repo_url_secret")
+
+	// Required: project_id (number >= 1)
+	v.validateRequiredNumberAttribute(block, "project_id", 1, 999999999)
+
+	// Required: cloud_provider
+	v.validateRequiredEnum(block, "cloud_provider", []string{"yandex", "aws"})
+
+	// Required: runner_type
+	v.validateRequiredEnum(block, "runner_type", []string{"serverless", "apex", "nadir"})
+
+	// Optional: cpu (float > 0)
+	if cpuVal, ok := block.GetAttribute("cpu"); ok {
+		if _, err := cpuVal.AsNumber(); err != nil {
+			v.result.AddError(cpuVal.Position, "cpu", "cpu must be a number (e.g. 0.5, 1, 2)")
 		}
 	}
 
-	// Validate required nested blocks
-	v.validateRequiredBlock(block, "cloud")
-	v.validateRequiredBlock(block, "resources")
-	v.validateRequiredBlock(block, "runner")
-	v.validateRequiredBlock(block, "gitlab")
-
-	// Validate cloud block
-	if cloudBlock, ok := block.GetBlock("cloud"); ok {
-		v.validateCloudBlock(cloudBlock)
+	// Optional: memory (string with unit, e.g. "512MB", "1GB")
+	if memVal, ok := block.GetAttribute("memory"); ok {
+		if s, err := memVal.AsString(); err != nil {
+			v.result.AddError(memVal.Position, "memory", "memory must be a string (e.g. \"512MB\", \"1GB\")")
+		} else if !isValidMemory(s) {
+			v.result.AddError(memVal.Position, "memory",
+				fmt.Sprintf("invalid memory value %q: expected format like \"512MB\" or \"1GB\"", s))
+		}
 	}
 
-	// Validate resources block
-	if resourcesBlock, ok := block.GetBlock("resources"); ok {
-		v.validateResourcesBlock(resourcesBlock)
+	// Optional: max_concurrent_jobs (number >= 1)
+	if mjVal, ok := block.GetAttribute("max_concurrent_jobs"); ok {
+		if n, err := mjVal.AsNumber(); err != nil {
+			v.result.AddError(mjVal.Position, "max_concurrent_jobs", "max_concurrent_jobs must be a number")
+		} else if n < 1 {
+			v.result.AddError(mjVal.Position, "max_concurrent_jobs", "max_concurrent_jobs must be >= 1")
+		}
 	}
 
-	// Validate runner block
-	if runnerBlock, ok := block.GetBlock("runner"); ok {
-		v.validateRunnerBlock(runnerBlock)
+	// Optional: tags (list of strings)
+	if tagsVal, ok := block.GetAttribute("tags"); ok {
+		v.validateStringList(tagsVal, "tags")
 	}
 
-	// Validate gitlab block
-	if gitlabBlock, ok := block.GetBlock("gitlab"); ok {
-		v.validateGitLabBlock(gitlabBlock)
-	}
-
-	// Validate optional environment block
-	if envBlock, ok := block.GetBlock("environment"); ok {
-		v.validateEnvironmentBlock(envBlock)
+	// Optional: environment (list of strings)
+	if envVal, ok := block.GetAttribute("environment"); ok {
+		v.validateStringList(envVal, "environment")
 	}
 }
 
-// validateEggsBucketBlock validates an eggsbucket configuration block
+// validateEggsBucketBlock validates an eggsbucket configuration block.
+// Schema: flat attributes — group_id instead of project_id, no git_repo_url_secret.
 func (v *Validator) validateEggsBucketBlock(block *Block) {
-	// EggsBucket must have exactly one label (the name)
 	if len(block.Labels) != 1 {
 		v.result.AddError(block.Position, "labels",
 			"eggsbucket block must have exactly one label (the bucket name)")
 		return
 	}
-
-	// Validate bucket name format (alphanumeric, hyphens, underscores)
-	bucketName := block.Labels[0]
-	if !isValidIdentifier(bucketName) {
+	if !isValidIdentifier(block.Labels[0]) {
 		v.result.AddError(block.Position, "name",
-			fmt.Sprintf("invalid eggsbucket name %q: must contain only alphanumeric characters, hyphens, and underscores", bucketName))
+			fmt.Sprintf("invalid eggsbucket name %q: must start with a letter and contain only alphanumeric characters, hyphens, and underscores", block.Labels[0]))
 	}
 
-	// Validate required attribute: type
-	typeVal, ok := block.GetAttribute("type")
-	if !ok {
-		v.result.AddError(block.Position, "type", "eggsbucket block must have a 'type' attribute")
-	} else {
-		typeStr, err := typeVal.AsString()
-		if err != nil {
-			v.result.AddError(typeVal.Position, "type", "type must be a string")
-		} else if typeStr != "vm" && typeStr != "serverless" {
-			v.result.AddError(typeVal.Position, "type",
-				fmt.Sprintf("type must be 'vm' or 'serverless', got %q", typeStr))
+	v.validateRequiredString(block, "gitlab_server")
+	v.validateRequiredString(block, "region")
+	v.validateRequiredSecretURI(block, "gitlab_token_secret")
+	v.validateRequiredSecretURI(block, "gitlab_webhook_secret")
+	v.validateRequiredNumberAttribute(block, "group_id", 1, 999999999)
+	v.validateRequiredEnum(block, "cloud_provider", []string{"yandex", "aws"})
+	v.validateRequiredEnum(block, "runner_type", []string{"serverless", "apex", "nadir"})
+
+	// Optional: cpu, memory, tags, project_ids
+	if cpuVal, ok := block.GetAttribute("cpu"); ok {
+		if _, err := cpuVal.AsNumber(); err != nil {
+			v.result.AddError(cpuVal.Position, "cpu", "cpu must be a number (e.g. 0.5, 1, 2)")
 		}
 	}
-
-	// Validate required nested blocks
-	v.validateRequiredBlock(block, "cloud")
-	v.validateRequiredBlock(block, "resources")
-	v.validateRequiredBlock(block, "runner")
-	v.validateRequiredBlock(block, "repositories")
-
-	// Validate cloud block
-	if cloudBlock, ok := block.GetBlock("cloud"); ok {
-		v.validateCloudBlock(cloudBlock)
+	if memVal, ok := block.GetAttribute("memory"); ok {
+		if s, err := memVal.AsString(); err != nil {
+			v.result.AddError(memVal.Position, "memory", "memory must be a string (e.g. \"512MB\", \"1GB\")")
+		} else if !isValidMemory(s) {
+			v.result.AddError(memVal.Position, "memory",
+				fmt.Sprintf("invalid memory value %q: expected format like \"512MB\" or \"1GB\"", s))
+		}
 	}
-
-	// Validate resources block
-	if resourcesBlock, ok := block.GetBlock("resources"); ok {
-		v.validateResourcesBlock(resourcesBlock)
+	if tagsVal, ok := block.GetAttribute("tags"); ok {
+		v.validateStringList(tagsVal, "tags")
 	}
-
-	// Validate runner block
-	if runnerBlock, ok := block.GetBlock("runner"); ok {
-		v.validateRunnerBlock(runnerBlock)
-	}
-
-	// Validate repositories block
-	if repositoriesBlock, ok := block.GetBlock("repositories"); ok {
-		v.validateRepositoriesBlock(repositoriesBlock)
-	}
-
-	// Validate optional environment block
-	if envBlock, ok := block.GetBlock("environment"); ok {
-		v.validateEnvironmentBlock(envBlock)
+	if pidsVal, ok := block.GetAttribute("project_ids"); ok {
+		if list, err := pidsVal.AsList(); err != nil {
+			v.result.AddError(pidsVal.Position, "project_ids", "project_ids must be a list")
+		} else {
+			for i, item := range list {
+				if _, err := item.AsNumber(); err != nil {
+					v.result.AddError(item.Position, fmt.Sprintf("project_ids[%d]", i),
+						"project_ids entries must be numbers")
+				}
+			}
+		}
 	}
 }
 
-// validateRepositoriesBlock validates a repositories block within an eggsbucket
-func (v *Validator) validateRepositoriesBlock(block *Block) {
-	// Repositories block must contain at least one repo block
-	repoBlocks := block.GetBlocks("repo")
-	if len(repoBlocks) == 0 {
-		v.result.AddError(block.Position, "repo",
-			"repositories block must contain at least one 'repo' block")
-		return
-	}
-
-	// Validate each repo block
-	for _, repoBlock := range repoBlocks {
-		v.validateRepoBlock(&repoBlock)
-	}
-}
-
-// validateRepoBlock validates a single repo block within repositories
-func (v *Validator) validateRepoBlock(block *Block) {
-	// Repo must have exactly one label (the repo name)
-	if len(block.Labels) != 1 {
-		v.result.AddError(block.Position, "labels",
-			"repo block must have exactly one label (the repo name)")
-		return
-	}
-
-	// Validate repo name
-	repoName := block.Labels[0]
-	if !isValidIdentifier(repoName) {
-		v.result.AddError(block.Position, "name",
-			fmt.Sprintf("invalid repo name %q: must contain only alphanumeric characters, hyphens, and underscores", repoName))
-	}
-
-	// Validate required nested block: gitlab
-	v.validateRequiredBlock(block, "gitlab")
-
-	// Validate gitlab block
-	if gitlabBlock, ok := block.GetBlock("gitlab"); ok {
-		v.validateGitLabBlock(gitlabBlock)
-	}
-}
-
-// validateJobBlock validates a job configuration block
+// validateJobBlock validates a job configuration block.
+// Schema: flat attributes — schedule, script, cloud_provider, region (required).
 func (v *Validator) validateJobBlock(block *Block) {
-	// Job must have exactly one label (the name)
 	if len(block.Labels) != 1 {
 		v.result.AddError(block.Position, "labels",
 			"job block must have exactly one label (the job name)")
 		return
 	}
-
-	// Validate job name
-	jobName := block.Labels[0]
-	if !isValidIdentifier(jobName) {
+	if !isValidIdentifier(block.Labels[0]) {
 		v.result.AddError(block.Position, "name",
-			fmt.Sprintf("invalid job name %q: must contain only alphanumeric characters, hyphens, and underscores", jobName))
+			fmt.Sprintf("invalid job name %q: must start with a letter and contain only alphanumeric characters, hyphens, and underscores", block.Labels[0]))
 	}
 
-	// Validate required attribute: schedule (cron expression)
-	scheduleVal, ok := block.GetAttribute("schedule")
-	if !ok {
+	// Required: schedule (cron)
+	if schedVal, ok := block.GetAttribute("schedule"); !ok {
 		v.result.AddError(block.Position, "schedule", "job block must have a 'schedule' attribute")
-	} else {
-		scheduleStr, err := scheduleVal.AsString()
-		if err != nil {
-			v.result.AddError(scheduleVal.Position, "schedule", "schedule must be a string")
-		} else if !isValidCronExpression(scheduleStr) {
-			v.result.AddError(scheduleVal.Position, "schedule",
-				fmt.Sprintf("invalid cron expression: %q", scheduleStr))
-		}
+	} else if s, err := schedVal.AsString(); err != nil {
+		v.result.AddError(schedVal.Position, "schedule", "schedule must be a string (cron expression)")
+	} else if !isValidCronExpression(s) {
+		v.result.AddError(schedVal.Position, "schedule",
+			fmt.Sprintf("invalid cron expression: %q", s))
 	}
 
-	// Validate required attribute: script
-	scriptVal, ok := block.GetAttribute("script")
-	if !ok {
-		v.result.AddError(block.Position, "script", "job block must have a 'script' attribute")
-	} else {
-		_, err := scriptVal.AsString()
-		if err != nil {
-			v.result.AddError(scriptVal.Position, "script", "script must be a string")
+	// Required: script
+	v.validateRequiredString(block, "script")
+
+	// Required: cloud_provider, region
+	v.validateRequiredEnum(block, "cloud_provider", []string{"yandex", "aws"})
+	v.validateRequiredString(block, "region")
+
+	// Optional: runner_image, cpu, memory, timeout, environment, secrets
+	if memVal, ok := block.GetAttribute("memory"); ok {
+		if s, err := memVal.AsString(); err != nil {
+			v.result.AddError(memVal.Position, "memory", "memory must be a string (e.g. \"256MB\")")
+		} else if !isValidMemory(s) {
+			v.result.AddError(memVal.Position, "memory",
+				fmt.Sprintf("invalid memory value %q: expected format like \"256MB\" or \"1GB\"", s))
 		}
 	}
-
-	// Validate required nested block: runner
-	v.validateRequiredBlock(block, "runner")
-	if runnerBlock, ok := block.GetBlock("runner"); ok {
-		v.validateJobRunnerBlock(runnerBlock)
+	if timeoutVal, ok := block.GetAttribute("timeout"); ok {
+		if s, err := timeoutVal.AsString(); err != nil {
+			v.result.AddError(timeoutVal.Position, "timeout", "timeout must be a duration string (e.g. \"30m\", \"1h\")")
+		} else if !isValidDuration(s) {
+			v.result.AddError(timeoutVal.Position, "timeout",
+				fmt.Sprintf("invalid duration %q: expected format like \"30s\", \"5m\", \"2h\"", s))
+		}
+	}
+	if secretsVal, ok := block.GetAttribute("secrets"); ok {
+		if list, err := secretsVal.AsList(); err != nil {
+			v.result.AddError(secretsVal.Position, "secrets", "secrets must be a list")
+		} else {
+			for i, item := range list {
+				if s, err := item.AsString(); err != nil {
+					v.result.AddError(item.Position, fmt.Sprintf("secrets[%d]", i), "secret must be a string")
+				} else if !isValidSecretURI(s) {
+					v.result.AddError(item.Position, fmt.Sprintf("secrets[%d]", i),
+						fmt.Sprintf("invalid secret URI %q: must use yc-lockbox://, aws-sm://, or vault:// scheme", s))
+				}
+			}
+		}
 	}
 }
 
-// validateUglyFoxBlock validates an uglyfox configuration block
+// validateUglyFoxBlock validates an uglyfox configuration block.
+// Schema: pruning {}, apex_pool {}, nadir_pool {}, runners_condition {} nested blocks.
 func (v *Validator) validateUglyFoxBlock(block *Block) {
-	// UglyFox should have no labels
 	if len(block.Labels) > 0 {
-		v.result.AddError(block.Position, "labels",
-			"uglyfox block should not have labels")
+		v.result.AddError(block.Position, "labels", "uglyfox block should not have labels")
 	}
 
-	// Validate required nested blocks
-	v.validateRequiredBlock(block, "pruning")
-
-	// Validate pruning block
+	// Required: pruning block
 	if pruningBlock, ok := block.GetBlock("pruning"); ok {
-		v.validatePruningBlock(pruningBlock)
+		v.validateUFPruningBlock(pruningBlock)
+	} else {
+		v.result.AddError(block.Position, "pruning", "uglyfox block must have a 'pruning' nested block")
 	}
 
-	// Validate runners_condition blocks (at least one required)
-	runnersConditions := block.GetBlocks("runners_condition")
-	if len(runnersConditions) == 0 {
-		v.result.AddError(block.Position, "runners_condition",
-			"uglyfox block must have at least one 'runners_condition' block")
+	// Required: apex_pool block
+	if apexBlock, ok := block.GetBlock("apex_pool"); ok {
+		v.validateUFPoolBlock(apexBlock, "apex_pool")
+	} else {
+		v.result.AddError(block.Position, "apex_pool", "uglyfox block must have an 'apex_pool' nested block")
 	}
 
-	for _, rcBlock := range runnersConditions {
-		v.validateRunnersConditionBlock(&rcBlock)
+	// Required: nadir_pool block
+	if nadirBlock, ok := block.GetBlock("nadir_pool"); ok {
+		v.validateUFPoolBlock(nadirBlock, "nadir_pool")
+	} else {
+		v.result.AddError(block.Position, "nadir_pool", "uglyfox block must have a 'nadir_pool' nested block")
 	}
 
-	// Validate optional policies block
-	if policiesBlock, ok := block.GetBlock("policies"); ok {
-		v.validatePoliciesBlock(policiesBlock)
+	// Optional: runners_condition blocks (zero or more, no label)
+	for i := range block.GetBlocks("runners_condition") {
+		rc := block.GetBlocks("runners_condition")[i]
+		v.validateUFRunnersConditionBlock(&rc)
 	}
 }
 
-// validateMotherGooseBlock validates a mothergoose configuration block
-func (v *Validator) validateMotherGooseBlock(block *Block) {
-	// MotherGoose should have no labels
-	if len(block.Labels) > 0 {
-		v.result.AddError(block.Position, "labels",
-			"mothergoose block should not have labels")
-	}
-
-	// Validate required nested blocks
-	v.validateRequiredBlock(block, "api_gateway")
-	v.validateRequiredBlock(block, "fastapi_app")
-	v.validateRequiredBlock(block, "celery_workers")
-	v.validateRequiredBlock(block, "uglyfox_workers")
-	v.validateRequiredBlock(block, "message_queues")
-	v.validateRequiredBlock(block, "triggers")
-	v.validateRequiredBlock(block, "database")
-	v.validateRequiredBlock(block, "storage")
-	v.validateRequiredBlock(block, "service_accounts")
-
-	// Note: Detailed validation of nested blocks would be added here
-	// For now, we just validate that the required blocks exist
-	// Full validation would check specific attributes within each block
+// validateUFPruningBlock validates the pruning block inside uglyfox.
+func (v *Validator) validateUFPruningBlock(block *Block) {
+	v.validateRequiredNumberAttribute(block, "max_age_hours", 1, 8760)
+	v.validateRequiredNumberAttribute(block, "max_failures", 1, 1000)
+	v.validateRequiredNumberAttribute(block, "idle_timeout_minutes", 1, 10080)
+	v.validateRequiredNumberAttribute(block, "check_interval_seconds", 1, 86400)
 }
 
-// validateRunnersConditionBlock validates a runners_condition configuration block
-func (v *Validator) validateRunnersConditionBlock(block *Block) {
-	// runners_condition must have exactly one label (the condition name)
-	if len(block.Labels) != 1 {
-		v.result.AddError(block.Position, "labels",
-			"runners_condition block must have exactly one label (the condition name)")
-		return
-	}
+// validateUFPoolBlock validates apex_pool or nadir_pool blocks inside uglyfox.
+func (v *Validator) validateUFPoolBlock(block *Block, poolType string) {
+	v.validateRequiredNumberAttribute(block, "min_size", 0, 1000)
+	v.validateRequiredNumberAttribute(block, "max_size", 0, 1000)
 
-	// Validate condition name
-	conditionName := block.Labels[0]
-	if !isValidIdentifier(conditionName) {
-		v.result.AddError(block.Position, "name",
-			fmt.Sprintf("invalid condition name %q: must contain only alphanumeric characters, hyphens, and underscores", conditionName))
-	}
-
-	// Validate required attribute: eggs_entities (list of strings)
-	eggsEntitiesVal, ok := block.GetAttribute("eggs_entities")
-	if !ok {
-		v.result.AddError(block.Position, "eggs_entities",
-			"runners_condition block must have an 'eggs_entities' attribute")
-	} else {
-		eggsEntitiesList, err := eggsEntitiesVal.AsList()
-		if err != nil {
-			v.result.AddError(eggsEntitiesVal.Position, "eggs_entities",
-				"eggs_entities must be a list")
-		} else {
-			if len(eggsEntitiesList) == 0 {
-				v.result.AddError(eggsEntitiesVal.Position, "eggs_entities",
-					"eggs_entities must contain at least one egg name")
-			}
-			for i, entity := range eggsEntitiesList {
-				entityStr, err := entity.AsString()
-				if err != nil {
-					v.result.AddError(entity.Position, fmt.Sprintf("eggs_entities[%d]", i),
-						"egg entity must be a string")
-				} else if !isValidIdentifier(entityStr) {
-					v.result.AddError(entity.Position, fmt.Sprintf("eggs_entities[%d]", i),
-						fmt.Sprintf("invalid egg name %q: must contain only alphanumeric characters, hyphens, and underscores", entityStr))
-				}
-			}
-		}
-	}
-
-	// Validate required nested blocks
-	v.validateRequiredBlock(block, "apex")
-	v.validateRequiredBlock(block, "nadir")
-
-	// Validate apex block
-	if apexBlock, ok := block.GetBlock("apex"); ok {
-		v.validatePoolBlock(apexBlock, "apex")
-	}
-
-	// Validate nadir block
-	if nadirBlock, ok := block.GetBlock("nadir"); ok {
-		v.validatePoolBlock(nadirBlock, "nadir")
-	}
-}
-
-// validateCloudBlock validates a cloud configuration block
-func (v *Validator) validateCloudBlock(block *Block) {
-	// Validate required attribute: provider
-	providerVal, ok := block.GetAttribute("provider")
-	if !ok {
-		v.result.AddError(block.Position, "provider", "cloud block must have a 'provider' attribute")
-	} else {
-		providerStr, err := providerVal.AsString()
-		if err != nil {
-			v.result.AddError(providerVal.Position, "provider", "provider must be a string")
-		} else if providerStr != "yandex" && providerStr != "aws" {
-			v.result.AddError(providerVal.Position, "provider",
-				fmt.Sprintf("provider must be 'yandex' or 'aws', got %q", providerStr))
-		}
-	}
-
-	// Validate required attribute: region
-	regionVal, ok := block.GetAttribute("region")
-	if !ok {
-		v.result.AddError(block.Position, "region", "cloud block must have a 'region' attribute")
-	} else {
-		_, err := regionVal.AsString()
-		if err != nil {
-			v.result.AddError(regionVal.Position, "region", "region must be a string")
-		}
-	}
-}
-
-// validateResourcesBlock validates a resources configuration block
-func (v *Validator) validateResourcesBlock(block *Block) {
-	// Validate required attributes
-	v.validateRequiredNumberAttribute(block, "cpu", 1, 128)
-	v.validateRequiredNumberAttribute(block, "memory", 512, 524288) // 512 MB to 512 GB
-	v.validateRequiredNumberAttribute(block, "disk", 10, 10240)     // 10 GB to 10 TB
-
-	typeVal, ok := block.GetAttribute("type")
-	if ok {
-		typeStr, err := typeVal.AsString()
-		if err != nil {
-			v.result.AddError(typeVal.Position, "type", "type must be a string")
-		} else if typeStr != "vm" && typeStr != "serverless" {
-			v.result.AddError(typeVal.Position, "type",
-				fmt.Sprintf("type must be 'vm' or 'serverless', got %q", typeStr))
-		}
-	}
-}
-
-// validateRunnerBlock validates a runner configuration block
-func (v *Validator) validateRunnerBlock(block *Block) {
-	// Validate required attribute: tags (list of strings)
-	tagsVal, ok := block.GetAttribute("tags")
-	if !ok {
-		v.result.AddError(block.Position, "tags", "runner block must have a 'tags' attribute")
-	} else {
-		tagsList, err := tagsVal.AsList()
-		if err != nil {
-			v.result.AddError(tagsVal.Position, "tags", "tags must be a list")
-		} else {
-			for i, tag := range tagsList {
-				_, err := tag.AsString()
-				if err != nil {
-					v.result.AddError(tag.Position, fmt.Sprintf("tags[%d]", i),
-						"tag must be a string")
-				}
-			}
-		}
-	}
-
-	// Validate required attribute: concurrent
-	v.validateRequiredNumberAttribute(block, "concurrent", 1, 100)
-
-	// Validate optional attribute: idle_timeout
-	if idleTimeoutVal, ok := block.GetAttribute("idle_timeout"); ok {
-		_, err := idleTimeoutVal.AsString()
-		if err != nil {
-			v.result.AddError(idleTimeoutVal.Position, "idle_timeout",
-				"idle_timeout must be a string (duration)")
-		}
-	}
-}
-
-// validateGitLabBlock validates a gitlab configuration block
-func (v *Validator) validateGitLabBlock(block *Block) {
-	// Validate required attribute: project_id
-	v.validateRequiredNumberAttribute(block, "project_id", 1, 999999999)
-
-	gitServer, ok := block.GetAttribute("server_name")
-	if !ok {
-		v.result.AddError(block.Position, "server_name",
-			"gitlab block must have a 'server_name' attribute")
-	} else {
-		_, err := gitServer.AsString()
-		if err != nil {
-			v.result.AddError(gitServer.Position, "server_name",
-				"server_name must be a string")
-		}
-	}
-
-	// Validate required attribute: token_secret
-	tokenSecretVal, ok := block.GetAttribute("token_secret")
-	if !ok {
-		v.result.AddError(block.Position, "token_secret",
-			"gitlab block must have a 'token_secret' attribute")
-	} else {
-		_, err := tokenSecretVal.AsString()
-		if err != nil {
-			v.result.AddError(tokenSecretVal.Position, "token_secret",
-				"token_secret must be a string")
-		}
-	}
-}
-
-// validateEnvironmentBlock validates an environment configuration block
-func (v *Validator) validateEnvironmentBlock(block *Block) {
-	// Environment block should only contain string attributes
-	for name, val := range block.Attributes {
-		_, err := val.AsString()
-		if err != nil {
-			v.result.AddError(val.Position, name,
-				"environment variables must be strings")
-		}
-	}
-}
-
-// validateJobRunnerBlock validates a runner block within a job
-func (v *Validator) validateJobRunnerBlock(block *Block) {
-	// Validate required attribute: type
-	typeVal, ok := block.GetAttribute("type")
-	if !ok {
-		v.result.AddError(block.Position, "type", "runner block must have a 'type' attribute")
-	} else {
-		typeStr, err := typeVal.AsString()
-		if err != nil {
-			v.result.AddError(typeVal.Position, "type", "type must be a string")
-		} else if typeStr != "vm" && typeStr != "serverless" {
-			v.result.AddError(typeVal.Position, "type",
-				fmt.Sprintf("type must be 'vm' or 'serverless', got %q", typeStr))
-		}
-	}
-
-	// Validate required attribute: tags
-	tagsVal, ok := block.GetAttribute("tags")
-	if !ok {
-		v.result.AddError(block.Position, "tags", "runner block must have a 'tags' attribute")
-	} else {
-		tagsList, err := tagsVal.AsList()
-		if err != nil {
-			v.result.AddError(tagsVal.Position, "tags", "tags must be a list")
-		} else {
-			for i, tag := range tagsList {
-				_, err := tag.AsString()
-				if err != nil {
-					v.result.AddError(tag.Position, fmt.Sprintf("tags[%d]", i),
-						"tag must be a string")
-				}
-			}
-		}
-	}
-}
-
-// validatePruningBlock validates a pruning configuration block
-func (v *Validator) validatePruningBlock(block *Block) {
-	v.validateRequiredNumberAttribute(block, "failed_threshold", 1, 100)
-
-	maxAgeVal, ok := block.GetAttribute("max_age")
-	if !ok {
-		v.result.AddError(block.Position, "max_age",
-			"pruning block must have a 'max_age' attribute")
-	} else {
-		_, err := maxAgeVal.AsString()
-		if err != nil {
-			v.result.AddError(maxAgeVal.Position, "max_age",
-				"max_age must be a string (duration)")
-		}
-	}
-
-	checkIntervalVal, ok := block.GetAttribute("check_interval")
-	if !ok {
-		v.result.AddError(block.Position, "check_interval",
-			"pruning block must have a 'check_interval' attribute")
-	} else {
-		_, err := checkIntervalVal.AsString()
-		if err != nil {
-			v.result.AddError(checkIntervalVal.Position, "check_interval",
-				"check_interval must be a string (duration)")
-		}
-	}
-}
-
-// validatePoolBlock validates an apex or nadir pool configuration block
-func (v *Validator) validatePoolBlock(block *Block, poolType string) {
-	v.validateRequiredNumberAttribute(block, "max_count", 0, 1000)
-	v.validateRequiredNumberAttribute(block, "min_count", 0, 1000)
-
-	// Validate that min_count <= max_count
-	minVal, minOk := block.GetAttribute("min_count")
-	maxVal, maxOk := block.GetAttribute("max_count")
+	minVal, minOk := block.GetAttribute("min_size")
+	maxVal, maxOk := block.GetAttribute("max_size")
 	if minOk && maxOk {
-		minNum, minErr := minVal.AsInt()
-		maxNum, maxErr := maxVal.AsInt()
-		if minErr == nil && maxErr == nil && minNum > maxNum {
-			v.result.AddError(block.Position, "min_count",
-				fmt.Sprintf("min_count (%d) cannot be greater than max_count (%d)", minNum, maxNum))
+		minN, minErr := minVal.AsInt()
+		maxN, maxErr := maxVal.AsInt()
+		if minErr == nil && maxErr == nil && minN > maxN {
+			v.result.AddError(block.Position, "min_size",
+				fmt.Sprintf("min_size (%d) cannot be greater than max_size (%d)", minN, maxN))
 		}
 	}
 
-	// Validate optional cpu_threshold for apex pools
-	if poolType == "apex" {
-		if cpuThresholdVal, ok := block.GetAttribute("cpu_threshold"); ok {
-			cpuThreshold, err := cpuThresholdVal.AsNumber()
-			if err != nil {
-				v.result.AddError(cpuThresholdVal.Position, "cpu_threshold",
-					"cpu_threshold must be a number")
-			} else if cpuThreshold < 0 || cpuThreshold > 100 {
-				v.result.AddError(cpuThresholdVal.Position, "cpu_threshold",
-					fmt.Sprintf("cpu_threshold must be between 0 and 100, got %v", cpuThreshold))
-			}
-		}
+	if poolType == "apex_pool" {
+		v.validateRequiredNumberAttribute(block, "scale_up_threshold", 1, 1000)
+	}
+	if poolType == "nadir_pool" {
+		v.validateRequiredNumberAttribute(block, "warmup_time_seconds", 0, 86400)
+	}
+}
 
-		// Validate optional memory_threshold for apex pools
-		if memoryThresholdVal, ok := block.GetAttribute("memory_threshold"); ok {
-			memoryThreshold, err := memoryThresholdVal.AsNumber()
-			if err != nil {
-				v.result.AddError(memoryThresholdVal.Position, "memory_threshold",
-					"memory_threshold must be a number")
-			} else if memoryThreshold < 0 || memoryThreshold > 100 {
-				v.result.AddError(memoryThresholdVal.Position, "memory_threshold",
-					fmt.Sprintf("memory_threshold must be between 0 and 100, got %v", memoryThreshold))
-			}
+// validateUFRunnersConditionBlock validates a runners_condition block inside uglyfox.
+func (v *Validator) validateUFRunnersConditionBlock(block *Block) {
+	if len(block.Labels) > 0 {
+		v.result.AddError(block.Position, "labels", "runners_condition block should not have labels")
+	}
+	v.validateRequiredString(block, "egg_name")
+	if maxFail, ok := block.GetAttribute("max_failures"); ok {
+		if n, err := maxFail.AsNumber(); err != nil || n < 1 {
+			v.result.AddError(maxFail.Position, "max_failures", "max_failures must be a number >= 1")
 		}
 	}
-
-	// Nadir pool requires idle_timeout
-	if poolType == "nadir" {
-		idleTimeoutVal, ok := block.GetAttribute("idle_timeout")
-		if !ok {
-			v.result.AddError(block.Position, "idle_timeout",
-				"nadir block must have an 'idle_timeout' attribute")
-		} else {
-			_, err := idleTimeoutVal.AsString()
-			if err != nil {
-				v.result.AddError(idleTimeoutVal.Position, "idle_timeout",
-					"idle_timeout must be a string (duration)")
-			}
+	if maxAge, ok := block.GetAttribute("max_age_hours"); ok {
+		if _, err := maxAge.AsNumber(); err != nil {
+			v.result.AddError(maxAge.Position, "max_age_hours", "max_age_hours must be a number")
 		}
 	}
 }
 
-// validatePoliciesBlock validates a policies configuration block
-func (v *Validator) validatePoliciesBlock(block *Block) {
-	// Policies block should contain rule blocks
-	rules := block.GetBlocks("rule")
-	if len(rules) == 0 {
-		v.result.AddError(block.Position, "rules",
-			"policies block must contain at least one rule")
+// validateMotherGooseBlock validates a mothergoose configuration block.
+// Schema: api_gateway {}, message_queue {}, cloud_trigger {}, container {} nested blocks.
+func (v *Validator) validateMotherGooseBlock(block *Block) {
+	if len(block.Labels) > 0 {
+		v.result.AddError(block.Position, "labels", "mothergoose block should not have labels")
 	}
 
-	for _, rule := range rules {
-		v.validateRuleBlock(&rule)
+	// Required: api_gateway
+	if agBlock, ok := block.GetBlock("api_gateway"); ok {
+		v.validateMGAPIGatewayBlock(agBlock)
+	} else {
+		v.result.AddError(block.Position, "api_gateway", "mothergoose block must have an 'api_gateway' nested block")
+	}
+
+	// Required: message_queue
+	if mqBlock, ok := block.GetBlock("message_queue"); ok {
+		v.validateMGMessageQueueBlock(mqBlock)
+	} else {
+		v.result.AddError(block.Position, "message_queue", "mothergoose block must have a 'message_queue' nested block")
+	}
+
+	// Required: cloud_trigger
+	if ctBlock, ok := block.GetBlock("cloud_trigger"); ok {
+		v.validateMGCloudTriggerBlock(ctBlock)
+	} else {
+		v.result.AddError(block.Position, "cloud_trigger", "mothergoose block must have a 'cloud_trigger' nested block")
+	}
+
+	// Required: container
+	if cBlock, ok := block.GetBlock("container"); ok {
+		v.validateMGContainerBlock(cBlock)
+	} else {
+		v.result.AddError(block.Position, "container", "mothergoose block must have a 'container' nested block")
 	}
 }
 
-// validateRuleBlock validates a rule block within policies
-func (v *Validator) validateRuleBlock(block *Block) {
-	// Rule must have exactly one label (the rule name)
-	if len(block.Labels) != 1 {
-		v.result.AddError(block.Position, "labels",
-			"rule block must have exactly one label (the rule name)")
+// validateMGAPIGatewayBlock validates the api_gateway block inside mothergoose.
+func (v *Validator) validateMGAPIGatewayBlock(block *Block) {
+	v.validateRequiredEnum(block, "cloud_provider", []string{"yandex", "aws"})
+	v.validateRequiredString(block, "region")
+	v.validateRequiredString(block, "domain")
+
+	if tlsVal, ok := block.GetAttribute("tls"); ok {
+		if _, err := tlsVal.AsBool(); err != nil {
+			v.result.AddError(tlsVal.Position, "tls", "tls must be a bool")
+		}
+	}
+}
+
+// validateMGMessageQueueBlock validates the message_queue block inside mothergoose.
+func (v *Validator) validateMGMessageQueueBlock(block *Block) {
+	v.validateRequiredEnum(block, "cloud_provider", []string{"yandex", "aws"})
+	v.validateRequiredString(block, "queue_name")
+}
+
+// validateMGCloudTriggerBlock validates the cloud_trigger block inside mothergoose.
+func (v *Validator) validateMGCloudTriggerBlock(block *Block) {
+	v.validateRequiredEnum(block, "type", []string{"timer", "webhook"})
+	v.validateRequiredString(block, "target")
+
+	if schedVal, ok := block.GetAttribute("schedule"); ok {
+		if s, err := schedVal.AsString(); err != nil {
+			v.result.AddError(schedVal.Position, "schedule", "schedule must be a string (cron expression)")
+		} else if !isValidCronExpression(s) {
+			v.result.AddError(schedVal.Position, "schedule",
+				fmt.Sprintf("invalid cron expression: %q", s))
+		}
+	}
+}
+
+// validateMGContainerBlock validates the container block inside mothergoose.
+func (v *Validator) validateMGContainerBlock(block *Block) {
+	v.validateRequiredString(block, "image")
+
+	if cpuVal, ok := block.GetAttribute("cpu"); ok {
+		if _, err := cpuVal.AsNumber(); err != nil {
+			v.result.AddError(cpuVal.Position, "cpu", "cpu must be a number")
+		}
+	}
+	if memVal, ok := block.GetAttribute("memory"); ok {
+		if s, err := memVal.AsString(); err != nil {
+			v.result.AddError(memVal.Position, "memory", "memory must be a string (e.g. \"512MB\")")
+		} else if !isValidMemory(s) {
+			v.result.AddError(memVal.Position, "memory",
+				fmt.Sprintf("invalid memory value %q: expected format like \"512MB\" or \"1GB\"", s))
+		}
+	}
+	if minVal, ok := block.GetAttribute("min_instances"); ok {
+		if n, err := minVal.AsNumber(); err != nil || n < 0 {
+			v.result.AddError(minVal.Position, "min_instances", "min_instances must be a number >= 0")
+		}
+	}
+	if maxVal, ok := block.GetAttribute("max_instances"); ok {
+		if n, err := maxVal.AsNumber(); err != nil || n < 1 {
+			v.result.AddError(maxVal.Position, "max_instances", "max_instances must be a number >= 1")
+		}
+	}
+}
+
+// --- helpers ---
+
+func (v *Validator) validateRequiredString(block *Block, name string) {
+	val, ok := block.GetAttribute(name)
+	if !ok {
+		v.result.AddError(block.Position, name,
+			fmt.Sprintf("%s block must have a '%s' attribute", block.Type, name))
 		return
 	}
-
-	// Validate required attribute: condition
-	conditionVal, ok := block.GetAttribute("condition")
-	if !ok {
-		v.result.AddError(block.Position, "condition",
-			"rule block must have a 'condition' attribute")
-	} else {
-		_, err := conditionVal.AsString()
-		if err != nil {
-			v.result.AddError(conditionVal.Position, "condition",
-				"condition must be a string")
-		}
-	}
-
-	// Validate required attribute: action
-	actionVal, ok := block.GetAttribute("action")
-	if !ok {
-		v.result.AddError(block.Position, "action",
-			"rule block must have an 'action' attribute")
-	} else {
-		actionStr, err := actionVal.AsString()
-		if err != nil {
-			v.result.AddError(actionVal.Position, "action",
-				"action must be a string")
-		} else {
-			validActions := []string{"terminate", "demote_to_nadir", "promote_to_apex"}
-			if !contains(validActions, actionStr) {
-				v.result.AddError(actionVal.Position, "action",
-					fmt.Sprintf("action must be one of %v, got %q", validActions, actionStr))
-			}
-		}
+	if _, err := val.AsString(); err != nil {
+		v.result.AddError(val.Position, name, fmt.Sprintf("%s must be a string", name))
 	}
 }
 
-// Helper functions
-
-func (v *Validator) validateRequiredBlock(block *Block, blockType string) {
-	if _, ok := block.GetBlock(blockType); !ok {
-		v.result.AddError(block.Position, blockType,
-			fmt.Sprintf("%s block must have a '%s' nested block", block.Type, blockType))
+func (v *Validator) validateRequiredSecretURI(block *Block, name string) {
+	val, ok := block.GetAttribute(name)
+	if !ok {
+		v.result.AddError(block.Position, name,
+			fmt.Sprintf("%s block must have a '%s' attribute", block.Type, name))
+		return
 	}
+	s, err := val.AsString()
+	if err != nil {
+		v.result.AddError(val.Position, name, fmt.Sprintf("%s must be a string", name))
+		return
+	}
+	if !isValidSecretURI(s) {
+		v.result.AddError(val.Position, name,
+			fmt.Sprintf("invalid secret URI %q: must use yc-lockbox://, aws-sm://, or vault:// scheme", s))
+	}
+}
+
+func (v *Validator) validateRequiredEnum(block *Block, name string, allowed []string) {
+	val, ok := block.GetAttribute(name)
+	if !ok {
+		v.result.AddError(block.Position, name,
+			fmt.Sprintf("%s block must have a '%s' attribute", block.Type, name))
+		return
+	}
+	s, err := val.AsString()
+	if err != nil {
+		v.result.AddError(val.Position, name, fmt.Sprintf("%s must be a string", name))
+		return
+	}
+	for _, a := range allowed {
+		if s == a {
+			return
+		}
+	}
+	v.result.AddError(val.Position, name,
+		fmt.Sprintf("%s must be one of %v, got %q", name, allowed, s))
 }
 
 func (v *Validator) validateRequiredNumberAttribute(block *Block, name string, min, max float64) {
@@ -744,39 +520,58 @@ func (v *Validator) validateRequiredNumberAttribute(block *Block, name string, m
 			fmt.Sprintf("%s block must have a '%s' attribute", block.Type, name))
 		return
 	}
-
 	num, err := val.AsNumber()
 	if err != nil {
-		v.result.AddError(val.Position, name,
-			fmt.Sprintf("%s must be a number", name))
+		v.result.AddError(val.Position, name, fmt.Sprintf("%s must be a number", name))
 		return
 	}
-
 	if num < min || num > max {
 		v.result.AddError(val.Position, name,
 			fmt.Sprintf("%s must be between %v and %v, got %v", name, min, max, num))
 	}
 }
 
+func (v *Validator) validateStringList(val Value, name string) {
+	list, err := val.AsList()
+	if err != nil {
+		v.result.AddError(val.Position, name, fmt.Sprintf("%s must be a list", name))
+		return
+	}
+	for i, item := range list {
+		if _, err := item.AsString(); err != nil {
+			v.result.AddError(item.Position, fmt.Sprintf("%s[%d]", name, i),
+				fmt.Sprintf("%s entries must be strings", name))
+		}
+	}
+}
+
+// isValidIdentifier checks name starts with a letter and contains only alphanumeric, hyphens, underscores.
 func isValidIdentifier(s string) bool {
-	// Must contain only alphanumeric characters, hyphens, and underscores
-	// Must start with a letter
 	matched, _ := regexp.MatchString(`^[a-zA-Z][a-zA-Z0-9_-]*$`, s)
 	return matched
 }
 
+// isValidCronExpression does a basic 5-field cron check.
 func isValidCronExpression(s string) bool {
-	// Basic cron validation: 5 or 6 fields separated by spaces
-	// This is a simplified check; a full implementation would validate each field
 	parts := strings.Fields(s)
 	return len(parts) == 5 || len(parts) == 6
 }
 
-func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
+// isValidSecretURI checks for yc-lockbox://, aws-sm://, or vault:// prefix.
+func isValidSecretURI(s string) bool {
+	return strings.HasPrefix(s, "yc-lockbox://") ||
+		strings.HasPrefix(s, "aws-sm://") ||
+		strings.HasPrefix(s, "vault://")
+}
+
+// isValidMemory checks for a number followed by MB or GB (case-insensitive).
+func isValidMemory(s string) bool {
+	matched, _ := regexp.MatchString(`(?i)^\d+(\.\d+)?(MB|GB)$`, s)
+	return matched
+}
+
+// isValidDuration checks for a number followed by s, m, h, or d.
+func isValidDuration(s string) bool {
+	matched, _ := regexp.MatchString(`^\d+(\.\d+)?(s|m|h|d)$`, s)
+	return matched
 }

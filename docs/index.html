@@ -443,7 +443,6 @@ gosling init
 
 <span class="cmt"># Or specify a path</span>
 gosling init /path/to/my-nest</code></pre>
-
       <h3>2. Add an Egg configuration</h3>
       <pre><code><span class="cmt"># Add a VM-based runner for a Yandex Cloud project</span>
 gosling add egg my-app --type vm --provider yandex
@@ -1000,6 +999,7 @@ gosling status --all --api-url https://mg.example.com --api-key $MG_API_KEY</cod
     <section class="section" id="concepts-nest">
       <h3>Nest Repository</h3>
       <p>The <strong>Nest</strong> is the single source of truth Git repository for all runner configuration. Gosling reads from it; MotherGoose syncs it every 5 minutes and on push webhooks.</p>
+      <img src="./nest.png" alt="Nest repository structure" style="display:block;margin:1.25rem auto 1.75rem;max-width:100%;object-fit:contain;filter:drop-shadow(0 0 18px rgba(56,189,248,0.3));" />
       <pre><code>Nest/
 ├── Eggs/
 │   ├── my-project/

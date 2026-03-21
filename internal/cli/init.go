@@ -63,6 +63,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		filepath.Join(absPath, "Eggs"),
 		filepath.Join(absPath, "Jobs"),
 		filepath.Join(absPath, "UF"),
+		filepath.Join(absPath, "MG"),
 	}
 
 	for _, dir := range dirs {
@@ -71,6 +72,20 @@ func runInit(cmd *cobra.Command, args []string) error {
 		}
 		fmt.Printf("  ✓ Created %s/\n", filepath.Base(dir))
 	}
+
+	// Create UF/config.fly with default UglyFox configuration
+	ufConfigPath := filepath.Join(absPath, "UF", "config.fly")
+	if err := os.WriteFile(ufConfigPath, []byte(defaultUglyFoxConfig()), 0644); err != nil {
+		return fmt.Errorf("failed to create UF/config.fly: %w", err)
+	}
+	fmt.Println("  ✓ Created UF/config.fly (defaultUglyfox)")
+
+	// Create MG/config.fly with default MotherGoose configuration
+	mgConfigPath := filepath.Join(absPath, "MG", "config.fly")
+	if err := os.WriteFile(mgConfigPath, []byte(defaultMotherGooseConfig()), 0644); err != nil {
+		return fmt.Errorf("failed to create MG/config.fly: %w", err)
+	}
+	fmt.Println("  ✓ Created MG/config.fly (defaultMothergoose)")
 
 	// Create README.md
 	readmePath := filepath.Join(absPath, "README.md")
@@ -156,8 +171,129 @@ Thumbs.db
 	fmt.Println("\n✅ Nest repository initialized successfully!")
 	fmt.Println("\nNext steps:")
 	fmt.Println("  1. Add an Egg configuration: gosling add egg <name>")
-	fmt.Println("  2. Configure UglyFox policies: edit UF/config.fly")
-	fmt.Println("  3. Validate your configuration: gosling validate")
+	fmt.Println("  2. Customize UglyFox policies: edit UF/config.fly")
+	fmt.Println("  3. Customize MotherGoose infra: edit MG/config.fly")
+	fmt.Println("  4. Validate your configuration: gosling validate")
 
 	return nil
+}
+
+func defaultUglyFoxConfig() string {
+	return `# UglyFox Configuration: defaultUglyfox
+# Runner lifecycle management: pruning policies and Apex/Nadir pool rules
+
+uglyfox {
+  pruning {
+    failed_threshold = 3
+    check_interval   = "5m"
+    max_age          = "24h"
+  }
+
+  runners_condition "default" {
+    # TODO: list the egg names this condition applies to
+    eggs_entities = ["my-app"]
+
+    apex {
+      max_count = 5
+      min_count = 1
+    }
+
+    nadir {
+      max_count    = 3
+      min_count    = 0
+      idle_timeout = "30m"
+    }
+  }
+}
+`
+}
+
+func defaultMotherGooseConfig() string {
+	return `# MotherGoose Infrastructure Configuration: defaultMothergoose
+# API Gateway, serverless containers, message queues, cloud triggers, database, storage
+
+mothergoose {
+  api_gateway {
+    name         = "polar-gosling-api"
+    openapi_spec = "openapi.yaml"
+  }
+
+  fastapi_app {
+    name    = "mothergoose-api"
+    runtime = "python312"
+    memory  = 512
+    timeout = 30
+  }
+
+  celery_workers {
+    name    = "mothergoose-celery"
+    runtime = "python312"
+    memory  = 1024
+    timeout = 300
+  }
+
+  uglyfox_workers {
+    name    = "uglyfox-celery"
+    runtime = "python312"
+    memory  = 512
+    timeout = 180
+  }
+
+  message_queues {
+    webhook_queue {
+      name               = "mothergoose-webhooks"
+      visibility_timeout = 300
+    }
+
+    uglyfox_queue {
+      name               = "uglyfox-tasks"
+      visibility_timeout = 180
+    }
+  }
+
+  triggers {
+    git_sync {
+      name     = "git-sync-trigger"
+      schedule = "*/5 * * * *"
+      endpoint = "/internal/sync-git"
+    }
+
+    health_check {
+      name     = "uglyfox-health-trigger"
+      schedule = "*/10 * * * *"
+      endpoint = "/internal/uglyfox/health-check"
+    }
+  }
+
+  database {
+    type = "ydb"
+    name = "polar-gosling-db"
+    mode = "serverless"
+  }
+
+  storage {
+    state_bucket {
+      name       = "polar-gosling-state"
+      versioning = true
+    }
+
+    binary_bucket {
+      name       = "polar-gosling-binaries"
+      versioning = false
+    }
+  }
+
+  service_accounts {
+    mothergoose {
+      name  = "mothergoose-sa"
+      roles = ["lockbox.payloadViewer", "ydb.editor"]
+    }
+
+    uglyfox {
+      name  = "uglyfox-sa"
+      roles = ["lockbox.payloadViewer", "ydb.viewer"]
+    }
+  }
+}
+`
 }

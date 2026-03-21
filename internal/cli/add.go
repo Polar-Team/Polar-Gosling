@@ -39,6 +39,36 @@ Example:
 	RunE: runAddEgg,
 }
 
+// addUFCmd represents the add uf command
+var addUFCmd = &cobra.Command{
+	Use:   "uf",
+	Short: "Add a default UglyFox configuration",
+	Long: `Add a default UglyFox configuration to UF/config.fly.
+
+Creates UF/config.fly with a starter uglyfox block (defaultUglyfox) including
+pruning policies and a default runners_condition.
+
+Example:
+  gosling add uf`,
+	Args: cobra.NoArgs,
+	RunE: runAddUF,
+}
+
+// addMGCmd represents the add mg command
+var addMGCmd = &cobra.Command{
+	Use:   "mg",
+	Short: "Add a default MotherGoose configuration",
+	Long: `Add a default MotherGoose infrastructure configuration to MG/config.fly.
+
+Creates MG/config.fly with a starter mothergoose block (defaultMothergoose) including
+API gateway, workers, message queues, triggers, database, storage, and service accounts.
+
+Example:
+  gosling add mg`,
+	Args: cobra.NoArgs,
+	RunE: runAddMG,
+}
+
 // addJobCmd represents the add job command
 var addJobCmd = &cobra.Command{
 	Use:   "job <name>",
@@ -59,6 +89,8 @@ func init() {
 	rootCmd.AddCommand(addCmd)
 	addCmd.AddCommand(addEggCmd)
 	addCmd.AddCommand(addJobCmd)
+	addCmd.AddCommand(addUFCmd)
+	addCmd.AddCommand(addMGCmd)
 
 	// Egg flags
 	addEggCmd.Flags().StringVarP(&eggType, "type", "t", "vm", "Runner type: vm or serverless")
@@ -161,6 +193,64 @@ func runAddJob(cmd *cobra.Command, args []string) error {
 	fmt.Println("  1. Edit the job file to define the script and configuration")
 	fmt.Println("  2. Validate: gosling validate")
 	fmt.Println("  3. Deploy: gosling deploy")
+
+	return nil
+}
+
+func runAddUF(cmd *cobra.Command, args []string) error {
+	nestRoot, err := findNestRoot()
+	if err != nil {
+		return fmt.Errorf("not in a Nest repository: %w\nRun 'gosling init' to create a new Nest repository", err)
+	}
+
+	ufDir := filepath.Join(nestRoot, "UF")
+	if err := os.MkdirAll(ufDir, 0755); err != nil {
+		return fmt.Errorf("failed to create UF directory: %w", err)
+	}
+
+	configPath := filepath.Join(ufDir, "config.fly")
+	if _, err := os.Stat(configPath); err == nil {
+		return fmt.Errorf("UF configuration already exists at %s", configPath)
+	}
+
+	if err := os.WriteFile(configPath, []byte(defaultUglyFoxConfig()), 0644); err != nil {
+		return fmt.Errorf("failed to create UF/config.fly: %w", err)
+	}
+
+	fmt.Printf("✅ Created UF/config.fly (defaultUglyfox): %s\n", configPath)
+	fmt.Println("\nNext steps:")
+	fmt.Println("  1. Edit eggs_entities to list your egg names")
+	fmt.Println("  2. Tune pruning thresholds and pool sizes")
+	fmt.Println("  3. Validate: gosling validate")
+
+	return nil
+}
+
+func runAddMG(cmd *cobra.Command, args []string) error {
+	nestRoot, err := findNestRoot()
+	if err != nil {
+		return fmt.Errorf("not in a Nest repository: %w\nRun 'gosling init' to create a new Nest repository", err)
+	}
+
+	mgDir := filepath.Join(nestRoot, "MG")
+	if err := os.MkdirAll(mgDir, 0755); err != nil {
+		return fmt.Errorf("failed to create MG directory: %w", err)
+	}
+
+	configPath := filepath.Join(mgDir, "config.fly")
+	if _, err := os.Stat(configPath); err == nil {
+		return fmt.Errorf("MG configuration already exists at %s", configPath)
+	}
+
+	if err := os.WriteFile(configPath, []byte(defaultMotherGooseConfig()), 0644); err != nil {
+		return fmt.Errorf("failed to create MG/config.fly: %w", err)
+	}
+
+	fmt.Printf("✅ Created MG/config.fly (defaultMothergoose): %s\n", configPath)
+	fmt.Println("\nNext steps:")
+	fmt.Println("  1. Set resource names to match your cloud environment")
+	fmt.Println("  2. Configure service account roles for your cloud provider")
+	fmt.Println("  3. Validate: gosling validate")
 
 	return nil
 }

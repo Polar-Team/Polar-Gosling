@@ -3859,3 +3859,233 @@ def test_s3_state_storage(localstack_container):
 - Performance benchmarks
 - Security audit
 - End-to-end scenarios
+
+
+---
+
+## gosling fmt — Fly File Formatter
+
+### Overview
+
+`gosling fmt` is a canonical formatter for `.fly` configuration files. It reads a parsed AST and emits a deterministic, canonical text representation — ensuring consistent style across all Nest repository files regardless of author. The formatter is idempotent: running it twice produces the same output as running it once.
+
+### Components and Interfaces
+
+#### `internal/cli/fmt.go`
+
+Cobra command (`fmtCmd`) registered on `rootCmd`. Flags:
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--path` | `string` | Nest repository root (default: auto-detect via `findNestRoot`) |
+| `--check` | `bool` | Compare against canonical form; exit non-zero if any file differs |
+| `--diff` | `bool` | Print unified diff to stdout; do not modify files |
+| `--stdout` | `bool` | Write formatted output to stdout (single-file only) |
+
+Flag validation (enforced before any file I/O):
+- `--stdout` requires exactly one file argument; error otherwise.
+- `--stdout` is mutually exclusive with `--check` and `--diff`.
+- `--check` and `--diff` may be combined (print diff AND exit non-zero).
+
+File discovery reuses `findFlyFiles()` and `findNestRoot()` from `validate.go` (same package).
+
+Orchestration loop:
+1. Parse each file with `parser.NewParser().ParseFile(path)`.
+2. On parse error: print to stderr, mark file as errored, continue to next file.
+3. On success: call `formatter.NewFormatter().Format(config)` to get canonical text.
+4. Compare canonical text to original file content.
+5. Depending on flags: write in-place / print diff / print to stdout / record check failure.
+6. After all files: print summary (`N reformatted, M already formatted, K errors`).
+
+Exit codes:
+- `0`: all files already in canonical form (or successfully formatted in-place).
+- `1`: `--check` found unformatted files, or any parse error occurred.
+
+#### `internal/parser/formatter.go`
+
+New file in the `parser` package. Exports a `Formatter` struct with three methods:
+
+```go
+type Formatter struct{}
+
+func NewFormatter() *Formatter
+
+// Format renders a complete Config to canonical text.
+// Top-level blocks are separated by exactly one blank line.
+// No trailing newline after the last block.
+func (f *Formatter) Format(config *Config) string
+
+// formatBlock renders a single Block at the given indent depth.
+// indent=0 for top-level blocks.
+func (f *Formatter) formatBlock(block *Block, indent int) string
+
+// formatValue renders a Value. indent is the current block depth,
+// used for multi-line list indentation.
+func (f *Formatter) formatValue(value *Value, indent int) string
+```
+
+Canonical form rules:
+
+| Rule | Detail |
+|------|--------|
+| Indentation | 2 spaces per level |
+| Opening brace | Same line as block type + labels, preceded by a single space |
+| Closing brace | Own line, at the block's own indent level |
+| Attribute separator | ` = ` (space-equals-space) |
+| Attribute order | Alphabetical by key within each block |
+| Nested block order | Source order preserved (semantically significant) |
+| Top-level block separator | Exactly one blank line between blocks |
+| Trailing newline | None (no trailing blank line at EOF) |
+| String values | Double-quoted |
+| List ≤ 2 elements | Inline: `["a", "b"]` |
+| List > 2 elements | Multi-line with trailing comma, closing `]` at block indent |
+
+Multi-line list example (indent=1, i.e. inside a top-level block):
+
+```
+tags = [
+    "docker",
+    "linux",
+    "microservices",
+  ]
+```
+
+The closing `]` is at `indent` level (2 × indent spaces), list items at `indent+1` level.
+
+#### `internal/parser/formatter_test.go`
+
+Table-driven unit tests covering each canonical form rule in isolation:
+
+- Single block with no attributes renders correctly.
+- Attributes are sorted alphabetically.
+- Nested blocks appear in source order.
+- String values use double quotes.
+- List with ≤ 2 elements is inline.
+- List with > 2 elements is multi-line with trailing comma.
+- Multiple top-level blocks are separated by exactly one blank line.
+- No trailing newline at EOF.
+- 2-space indentation per nesting level.
+- Opening `{` on same line; closing `}` on own line.
+
+#### `internal/cli/fmt_property_test.go`
+
+Property-based tests using `gopter` (`github.com/leanovate/gopter`). Each test runs a minimum of 100 iterations.
+
+**Property 43: Idempotence**
+```
+// Feature: gosling-fmt, Property 43: Idempotence — fmt(fmt(x)) == fmt(x)
+```
+
+**Property 44: Round-Trip Correctness**
+```
+// Feature: gosling-fmt, Property 44: Round-Trip — parse(fmt(x)) yields AST equivalent to x
+```
+
+### Data Flow
+
+```
+gosling fmt [file] [flags]
+    │
+    ├─ single file ──► parser.ParseFile() ──► formatter.Format() ──► write/check/diff/stdout
+    │
+    └─ no file ──► findNestRoot() ──► findFlyFiles() ──► for each file:
+                                                              parser.ParseFile()
+                                                              formatter.Format()
+                                                              compare / write / diff
+                                                         ──► summary
+```
+
+### Diff Implementation
+
+No external dependency. A minimal unified diff printer is implemented inline in `fmt.go`:
+
+1. Split original and formatted text into lines with `strings.Split`.
+2. Compute a line-level diff using a simple LCS (longest common subsequence) over the line slices.
+3. Emit unified diff hunks with `--- a/{path}` / `+++ b/{path}` headers and `@@ -L,N +L,N @@` hunk headers.
+
+This avoids adding `github.com/sergi/go-diff` or any other external dependency.
+
+### File Locations (dev-new-features worktree)
+
+| File | Purpose |
+|------|---------|
+| `Polar-Gosling/dev-new-features/internal/cli/fmt.go` | Cobra command, flag validation, orchestration loop, diff printer |
+| `Polar-Gosling/dev-new-features/internal/cli/fmt_property_test.go` | gopter property tests (Properties 43 & 44) |
+| `Polar-Gosling/dev-new-features/internal/parser/formatter.go` | `Formatter` struct and canonical rendering logic |
+| `Polar-Gosling/dev-new-features/internal/parser/formatter_test.go` | Table-driven unit tests for canonical form rules |
+
+### Correctness Properties
+
+*A property is a characteristic or behavior that should hold true across all valid executions of a system — essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
+
+#### Property 43: Formatter Idempotence
+
+*For any* valid `Config` AST, formatting it twice must produce the same output as formatting it once: `Format(Format(x)) == Format(x)`.
+
+This subsumes requirements 24.12 (already-canonical files are unchanged), 24.16–24.19 (indentation, brace placement, attribute separator), 24.22–24.24 (blank lines between blocks, no trailing blank line, double-quoted strings), and 24.27 (the explicit idempotence requirement).
+
+**Validates: Requirements 24.12, 24.16, 24.17, 24.18, 24.19, 24.22, 24.23, 24.24, 24.27**
+
+#### Property 44: Round-Trip Correctness
+
+*For any* valid `Config` AST `x`, parsing the formatted output must yield an AST semantically equivalent to `x`: `Parse(Format(x)) ≅ x` (same block types, labels, attribute values, and nested block structure).
+
+This validates that the formatter never loses or corrupts information, and that the canonical text is valid `.fly` syntax.
+
+**Validates: Requirements 24.11, 24.28**
+
+#### Property 45: Attribute Alphabetical Ordering
+
+*For any* `Block` with two or more attributes, the formatted output must list attribute keys in strictly ascending alphabetical order.
+
+This is not subsumed by idempotence alone (idempotence only guarantees stability, not what the stable form looks like).
+
+**Validates: Requirements 24.20**
+
+#### Property 46: Nested Block Order Preservation
+
+*For any* `Block` containing nested blocks, the order of nested blocks in the formatted output must be identical to their order in the input AST.
+
+**Validates: Requirements 24.21**
+
+#### Property 47: List Formatting Threshold
+
+*For any* `Value` of list type, if the list contains more than 2 elements the formatted output must be multi-line (each element on its own line with a trailing comma); if the list contains 2 or fewer elements the formatted output must be inline on a single line.
+
+**Validates: Requirements 24.25, 24.26**
+
+#### Property 48: Parse Error Leaves File Unmodified
+
+*For any* file path whose content is not valid `.fly` syntax, invoking the formatter on that file must leave the file's content byte-for-byte identical to its content before the invocation.
+
+**Validates: Requirements 24.13**
+
+### Error Handling
+
+| Scenario | Behaviour |
+|----------|-----------|
+| File cannot be read | Print error to stderr; skip file; exit 1 |
+| File fails to parse | Print parse error to stderr; leave file unmodified; continue; exit 1 |
+| `--stdout` without file arg | Print descriptive error to stderr; exit 1 immediately |
+| `--stdout` + `--check` or `--diff` | Print mutual-exclusivity error to stderr; exit 1 immediately |
+| File write failure (in-place) | Print OS error to stderr; exit 1 |
+| No `.fly` files found | Print warning; exit 0 |
+
+### Testing Strategy
+
+**Unit tests** (`formatter_test.go`): table-driven, cover each canonical form rule with a hand-crafted AST and expected output string. Fast, deterministic, no I/O.
+
+**Property-based tests** (`fmt_property_test.go`): use `gopter` to generate random `Config` ASTs. Each property runs a minimum of 100 iterations. Two properties:
+
+- **Property 43 (Idempotence)**: generate random `Config` → `s1 = Format(config)` → parse `s1` → `s2 = Format(parsed)` → assert `s1 == s2`.
+- **Property 44 (Round-Trip)**: generate random `Config` → `s = Format(config)` → `parsed = Parse(s)` → assert `parsed` is semantically equivalent to `config` (same structure and values).
+
+Tag format used in test comments:
+```
+// Feature: gosling-fmt, Property 43: Idempotence — fmt(fmt(x)) == fmt(x)
+// Feature: gosling-fmt, Property 44: Round-Trip — parse(fmt(x)) yields AST equivalent to x
+```
+
+**Integration tests** (`fmt_test.go` in `cli` package): create a temporary Nest directory with real `.fly` files, invoke `runFmt`, assert file contents and exit codes for each flag combination.
+
+Both unit and property tests are complementary: unit tests catch concrete formatting bugs against known inputs; property tests verify general correctness across the full input space.

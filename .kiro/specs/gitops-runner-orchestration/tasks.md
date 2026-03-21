@@ -807,6 +807,77 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - **Property 42: EggsBucket Shared Configuration**
   - **Validates: Requirements 1.6**
 
+## gosling fmt Feature
+
+- [x] 36. Fly File Formatter — Pretty Printer (`formatter.go`)
+  - Create `Polar-Gosling/dev-new-features/internal/parser/formatter.go`
+  - Implement `Formatter` struct with `NewFormatter()` constructor
+  - Implement `Format(config *Config) string` — renders top-level blocks separated by exactly one blank line, no trailing newline
+  - Implement `formatBlock(block *Block, indent int) string` — recursive block renderer:
+    - 2-space indent per level
+    - Opening `{` on same line as block type + labels
+    - Closing `}` on own line at block's own indent level
+    - Attributes sorted alphabetically by key
+    - Nested blocks in source order
+  - Implement `formatValue(value *Value, indent int) string`:
+    - Strings: double-quoted
+    - Lists ≤ 2 elements: inline `["a", "b"]`
+    - Lists > 2 elements: multi-line with trailing comma, closing `]` at block indent level
+  - _Requirements: 24.16, 24.17, 24.18, 24.19, 24.20, 24.21, 24.22, 24.23, 24.24, 24.25, 24.26_
+
+  - [x] 36.1 Write unit tests for formatter (`formatter_test.go`)
+    - Create `Polar-Gosling/dev-new-features/internal/parser/formatter_test.go`
+    - Table-driven tests covering each canonical form rule:
+      - Single block with no attributes
+      - Attributes sorted alphabetically
+      - Nested blocks in source order
+      - String values double-quoted
+      - List ≤ 2 elements inline
+      - List > 2 elements multi-line with trailing comma
+      - Multiple top-level blocks separated by exactly one blank line
+      - No trailing newline at EOF
+      - 2-space indentation per nesting level
+      - Opening `{` on same line; closing `}` on own line
+    - _Requirements: 24.16, 24.17, 24.18, 24.19, 24.20, 24.21, 24.22, 24.23, 24.24, 24.25, 24.26_
+
+- [x] 37. Gosling CLI — `fmt` Command (`fmt.go`)
+  - Create `Polar-Gosling/dev-new-features/internal/cli/fmt.go`
+  - Implement `fmtCmd` cobra command registered on `rootCmd`
+  - Flags: `--path` (string), `--check` (bool), `--diff` (bool), `--stdout` (bool)
+  - Flag validation (before any file I/O):
+    - `--stdout` requires exactly one file argument
+    - `--stdout` is mutually exclusive with `--check` and `--diff`
+    - `--check` and `--diff` may be combined
+  - File discovery: reuse `findFlyFiles()` and `findNestRoot()` from `validate.go`
+  - Orchestration loop:
+    1. Parse each file with `parser.NewParser().ParseFile(path)`
+    2. On parse error: print to stderr, mark errored, continue
+    3. On success: call `formatter.NewFormatter().Format(config)`
+    4. Compare canonical text to original file content
+    5. Apply mode: write in-place / print diff / print to stdout / record check failure
+    6. Print summary after all files
+  - Implement inline unified diff printer (no external deps): split lines, LCS-based diff, unified diff format with `--- a/` / `+++ b/` headers and `@@ -L,N +L,N @@` hunk headers
+  - Exit codes: 0 = all formatted / 1 = check failures or parse errors
+  - _Requirements: 24.1, 24.2, 24.3, 24.4, 24.5, 24.6, 24.7, 24.8, 24.9, 24.10, 24.11, 24.12, 24.13, 24.14, 24.15_
+
+  - [x] 37.1 Write property tests for `gosling fmt` (`fmt_property_test.go`)
+    - Create `Polar-Gosling/dev-new-features/internal/cli/fmt_property_test.go`
+    - Use `gopter` (`github.com/leanovate/gopter`) with minimum 100 iterations per property
+    - **Property 43: Idempotence** — `Format(Format(x)) == Format(x)` for all valid ASTs
+      - `// Feature: gosling-fmt, Property 43: Idempotence — fmt(fmt(x)) == fmt(x)`
+      - _Requirements: 24.27_
+    - **Property 44: Round-Trip Correctness** — `Parse(Format(x))` yields AST semantically equivalent to `x`
+      - `// Feature: gosling-fmt, Property 44: Round-Trip — parse(fmt(x)) yields AST equivalent to x`
+      - _Requirements: 24.28_
+    - **Property 45: Attribute Alphabetical Ordering** — formatted output lists attribute keys in ascending alphabetical order
+      - _Requirements: 24.20_
+    - **Property 46: Nested Block Order Preservation** — nested block order in formatted output matches input AST order
+      - _Requirements: 24.21_
+    - **Property 47: List Formatting Threshold** — lists > 2 elements are multi-line; lists ≤ 2 elements are inline
+      - _Requirements: 24.25, 24.26_
+    - **Property 48: Parse Error Leaves File Unmodified** — file content is byte-for-byte identical after a parse error
+      - _Requirements: 24.13_
+
 ## Notes
 
 - Tasks marked with `*` are optional test tasks and can be skipped for faster MVP

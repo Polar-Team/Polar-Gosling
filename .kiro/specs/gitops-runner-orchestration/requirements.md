@@ -441,3 +441,49 @@ The Polar Gosling GitOps Runner Orchestration system is a comprehensive platform
 31. THE System SHALL configure s3fs with appropriate caching and performance options for binary access
 32. THE System SHALL handle s3fs mount failures gracefully with retry logic and fallback mechanisms
 
+
+### Requirement 24: Fly File Formatter (`gosling fmt`)
+
+**User Story:** As a developer, I want a canonical formatter for `.fly` configuration files, so that all Nest repository files have a consistent, readable style regardless of who authored them.
+
+#### Acceptance Criteria
+
+**Command Interface:**
+
+1. THE Gosling_CLI SHALL provide a `fmt` command that formats `.fly` configuration files to a canonical style.
+2. WHEN a file argument is provided, THE `fmt` command SHALL format that single file.
+3. WHEN no file argument is provided, THE `fmt` command SHALL discover and format all `.fly` files in the Nest_Repository (Eggs/, Jobs/, UF/, MG/ directories), using the same discovery logic as `gosling validate`.
+4. THE `fmt` command SHALL support a `--path` flag to specify the Nest_Repository root (default: auto-detect via Nest root discovery).
+5. THE `fmt` command SHALL support a `--check` flag: compare files against Canonical Form without writing changes; exit non-zero if any file is not formatted.
+6. THE `fmt` command SHALL support a `--diff` flag: print a unified diff of proposed changes to stdout without modifying files.
+7. THE `fmt` command SHALL support a `--stdout` flag (single-file only): write formatted output to stdout without modifying the source file.
+8. WHEN `--stdout` is used without a file argument, THE `fmt` command SHALL exit with a non-zero code and a descriptive error.
+9. WHEN `--stdout` is combined with `--check` or `--diff`, THE `fmt` command SHALL exit with a non-zero code (mutually exclusive flags).
+10. WHEN `--check` and `--diff` are combined, THE `fmt` command SHALL apply both: print diffs AND exit non-zero if any file is not in Canonical Form.
+
+**In-Place Formatting:**
+
+11. WHEN formatting in-place, THE `fmt` command SHALL overwrite each file with its Canonical Form.
+12. WHEN a file is already in Canonical Form, THE `fmt` command SHALL make no changes and exit with code 0.
+13. IF a file cannot be parsed, THE `fmt` command SHALL print the parse error to stderr, leave the file unmodified, and exit with a non-zero code.
+14. A parse error in one file SHALL NOT prevent formatting of other files when processing the full Nest_Repository.
+15. WHEN all files are processed, THE `fmt` command SHALL print a summary reporting the count of files reformatted and files already in Canonical Form.
+
+**Canonical Form (Pretty Printer):**
+
+16. THE Pretty_Printer SHALL indent each nested block level with 2 spaces.
+17. THE Pretty_Printer SHALL place the opening brace `{` on the same line as the block type and labels, separated by a single space.
+18. THE Pretty_Printer SHALL place the closing brace `}` on its own line at the indentation level of the block declaration.
+19. THE Pretty_Printer SHALL separate attribute assignments with ` = ` (space-equals-space).
+20. THE Pretty_Printer SHALL sort attributes within a block alphabetically by key name.
+21. THE Pretty_Printer SHALL preserve the source order of nested blocks (block order is semantically significant).
+22. THE Pretty_Printer SHALL emit exactly one blank line between top-level blocks.
+23. THE Pretty_Printer SHALL NOT emit a trailing blank line at the end of the file.
+24. THE Pretty_Printer SHALL format string values with double quotes.
+25. THE Pretty_Printer SHALL format list values with each element on its own line (with trailing comma) when the list contains more than 2 elements.
+26. THE Pretty_Printer SHALL format list values inline when the list contains 2 or fewer elements.
+
+**Correctness Properties:**
+
+27. FOR ALL valid Fly_Files, formatting the Canonical Form output SHALL produce output identical to the input (idempotence: `fmt(fmt(x)) == fmt(x)`).
+28. FOR ALL valid Fly_Files, THE Pretty_Printer SHALL produce output that, when re-parsed, yields an AST semantically equivalent to the original (round-trip correctness).

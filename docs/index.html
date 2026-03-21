@@ -97,29 +97,44 @@
     .sidebar a.active { color: var(--accent); border-left-color: var(--accent); background: var(--surface2); }
     .content { flex: 1; padding: 3rem 4rem; max-width: 900px; }
 
-    /* Mobile nav overlay */
-    #mobile-nav {
+    /* Mobile sidebar drawer */
+    #sidebar-backdrop {
       display: none;
-      position: fixed;
-      top: 0; left: 0;
-      width: 100%;
-      z-index: 99999;
-      background: #080e14;
-      padding: 4.5rem 2rem 2rem;
-      flex-direction: column;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 200;
+      backdrop-filter: blur(2px);
+    }
+    #sidebar-backdrop.open { display: block; }
+    #mobile-sidebar {
+      position: fixed; top: 0; left: 0;
+      width: 280px; height: 100%;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      z-index: 201;
       overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
+      padding: 0 0 2rem;
+      transform: translateX(-100%);
+      transition: transform 0.25s ease;
     }
-    #mobile-nav.open { display: flex; }
-    #mobile-nav a { color: #e2eaf4; font-size: 1.2rem; font-weight: 500; padding: 1rem 0; border-bottom: 1px solid #1e2d42; text-decoration: none; display: block; }
-    #mobile-nav a:last-child { border-bottom: none; }
-    #mobile-nav-close {
-      position: fixed; top: 1rem; right: 1.25rem;
-      z-index: 100000;
-      background: none; border: none; color: #7a90a8; font-size: 2rem; cursor: pointer; line-height: 1;
-      display: none;
+    #mobile-sidebar.open { transform: translateX(0); }
+    .mobile-sidebar-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 1.25rem;
+      height: 56px;
+      border-bottom: 1px solid var(--border);
+      position: sticky; top: 0;
+      background: var(--surface);
     }
-    #mobile-nav-close.visible { display: block; }
+    .mobile-sidebar-logo { font-weight: 700; font-size: 1rem; color: var(--text); display: flex; align-items: center; gap: 0.4rem; }
+    .mobile-sidebar-logo span { color: var(--accent); }
+    .mobile-sidebar-close { background: none; border: none; color: var(--text-muted); font-size: 1.4rem; cursor: pointer; padding: 0.25rem; line-height: 1; }
+    .mobile-sidebar-close:hover { color: var(--text); }
+    .mobile-sidebar-section { margin-top: 1.25rem; }
+    .mobile-sidebar-title { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); padding: 0 1.25rem 0.4rem; }
+    #mobile-sidebar a { display: block; padding: 0.35rem 1.25rem; font-size: 0.875rem; color: var(--text-muted); border-left: 2px solid transparent; text-decoration: none; }
+    #mobile-sidebar a:hover { color: var(--text); background: var(--surface2); }
+    #mobile-sidebar .mobile-sidebar-github { margin: 1.5rem 1.25rem 0; font-size: 0.875rem; color: var(--accent); }
 
     /* Tablet */
     @media (max-width: 1024px) {
@@ -309,13 +324,47 @@
   <button class="nav-hamburger" aria-label="Open menu">☰</button>
 </nav>
 
-<button id="mobile-nav-close">✕</button>
-<div id="mobile-nav">
-  <a href="#quickstart">Quickstart</a>
-  <a href="#commands">Commands</a>
-  <a href="#fly-language">Fly Language</a>
-  <a href="#concepts">Concepts</a>
-  <a href="https://github.com/polar-gosling/gosling" target="_blank">GitHub ↗</a>
+<div id="sidebar-backdrop"></div>
+<div id="mobile-sidebar">
+  <div class="mobile-sidebar-header">
+    <div class="mobile-sidebar-logo">🪿 Gosling <span>CLI</span></div>
+    <button class="mobile-sidebar-close" aria-label="Close menu">✕</button>
+  </div>
+  <div class="mobile-sidebar-section">
+    <div class="mobile-sidebar-title">Getting Started</div>
+    <a href="#overview">Overview</a>
+    <a href="#quickstart">Quickstart</a>
+    <a href="#installation">Installation</a>
+  </div>
+  <div class="mobile-sidebar-section">
+    <div class="mobile-sidebar-title">CLI Commands</div>
+    <a href="#cmd-init">gosling init</a>
+    <a href="#cmd-add">gosling add</a>
+    <a href="#cmd-validate">gosling validate</a>
+    <a href="#cmd-fmt">gosling fmt</a>
+    <a href="#cmd-parse">gosling parse</a>
+    <a href="#cmd-deploy">gosling deploy</a>
+    <a href="#cmd-rollback">gosling rollback</a>
+    <a href="#cmd-status">gosling status</a>
+  </div>
+  <div class="mobile-sidebar-section">
+    <div class="mobile-sidebar-title">Fly Language</div>
+    <a href="#fly-overview">Overview</a>
+    <a href="#fly-egg">egg block</a>
+    <a href="#fly-eggsbucket">eggsbucket block</a>
+    <a href="#fly-job">job block</a>
+    <a href="#fly-uglyfox">uglyfox block</a>
+    <a href="#fly-secrets">Secret URIs</a>
+    <a href="#fly-types">Type System</a>
+  </div>
+  <div class="mobile-sidebar-section">
+    <div class="mobile-sidebar-title">Concepts</div>
+    <a href="#concepts-nest">Nest Repository</a>
+    <a href="#concepts-runners">Runners</a>
+    <a href="#concepts-pools">Apex / Nadir Pools</a>
+    <a href="#concepts-services">Services</a>
+  </div>
+  <a href="https://github.com/polar-gosling/gosling" target="_blank" class="mobile-sidebar-github">GitHub ↗</a>
 </div>
 
 <div class="layout">
@@ -331,6 +380,7 @@
       <a href="#cmd-init">gosling init</a>
       <a href="#cmd-add">gosling add</a>
       <a href="#cmd-validate">gosling validate</a>
+      <a href="#cmd-fmt">gosling fmt</a>
       <a href="#cmd-parse">gosling parse</a>
       <a href="#cmd-deploy">gosling deploy</a>
       <a href="#cmd-rollback">gosling rollback</a>
@@ -519,6 +569,53 @@ gosling validate
 <span class="cmt"># Validate a specific file</span>
 gosling validate Eggs/my-app/config.fly</code></pre>
           <p>Validation checks include: block type correctness, required attributes, value type constraints, identifier naming rules, and file-location consistency (e.g. a <code>job</code> block must be in <code>Jobs/</code>).</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- CMD: FMT -->
+    <section class="section" id="cmd-fmt">
+      <div class="cmd-block">
+        <div class="cmd-header">
+          <span class="cmd-name">gosling fmt</span>
+          <span class="cmd-desc">Format .fly configuration files</span>
+        </div>
+        <div class="cmd-body">
+          <code class="cmd-usage">gosling fmt [file...] [flags]</code>
+          <p>Formats <code>.fly</code> files to canonical style: attributes sorted alphabetically, 2-space indentation, consistent brace placement, and normalized list formatting. Without arguments, discovers and formats all <code>.fly</code> files in the Nest repository.</p>
+          <table>
+            <tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+            <tr><td class="flag-name">-p, --path</td><td><code>.</code></td><td>Path to Nest repository root <span class="flag-optional">optional</span></td></tr>
+            <tr><td class="flag-name">--check</td><td><code>false</code></td><td>Exit non-zero if any file is not formatted (no writes) <span class="flag-optional">optional</span></td></tr>
+            <tr><td class="flag-name">--diff</td><td><code>false</code></td><td>Print unified diff of changes instead of writing <span class="flag-optional">optional</span></td></tr>
+            <tr><td class="flag-name">--stdout</td><td><code>false</code></td><td>Print formatted output to stdout (requires exactly one file argument; mutually exclusive with <code>--check</code> and <code>--diff</code>) <span class="flag-optional">optional</span></td></tr>
+          </table>
+          <pre><code><span class="cmt"># Format all .fly files in the Nest (in-place)</span>
+gosling fmt
+
+<span class="cmt"># Check formatting without writing (useful in CI)</span>
+gosling fmt --check
+
+<span class="cmt"># Show a diff of what would change</span>
+gosling fmt --diff
+
+<span class="cmt"># Print formatted output of a single file to stdout</span>
+gosling fmt Eggs/my-app/config.fly --stdout</code></pre>
+          <div class="callout callout-tip">
+            <strong>✅ Idempotent</strong>
+            Running <code>gosling fmt</code> twice produces the same result. Files that are already formatted are left untouched. Parse errors leave the original file byte-for-byte unchanged.
+          </div>
+          <h4>Canonical format rules</h4>
+          <table>
+            <tr><th>Rule</th><th>Detail</th></tr>
+            <tr><td>Indentation</td><td>2 spaces per nesting level</td></tr>
+            <tr><td>Brace placement</td><td>Opening <code>{</code> on same line as block type; closing <code>}</code> on its own line</td></tr>
+            <tr><td>Attribute order</td><td>Sorted alphabetically within each block</td></tr>
+            <tr><td>Nested block order</td><td>Preserved from source</td></tr>
+            <tr><td>Short lists (≤ 2 elements)</td><td>Inline: <code>["a", "b"]</code></td></tr>
+            <tr><td>Long lists (&gt; 2 elements)</td><td>Multi-line with trailing comma; closing <code>]</code> at block indent</td></tr>
+            <tr><td>Top-level blocks</td><td>Separated by exactly one blank line; no trailing newline at EOF</td></tr>
+          </table>
         </div>
       </div>
     </section>
@@ -998,31 +1095,26 @@ UglyFox (background)
 </div>
 
 <script>
-  const mobileNav = document.getElementById('mobile-nav');
-  const closeBtn = document.getElementById('mobile-nav-close');
+  const backdrop = document.getElementById('sidebar-backdrop');
+  const mobileSidebar = document.getElementById('mobile-sidebar');
+  const closeBtn = mobileSidebar.querySelector('.mobile-sidebar-close');
 
-  function openNav() {
-    mobileNav.style.height = window.innerHeight + 'px';
-    mobileNav.classList.add('open');
-    closeBtn.classList.add('visible');
+  function openSidebar() {
+    mobileSidebar.classList.add('open');
+    backdrop.classList.add('open');
     document.body.style.overflow = 'hidden';
   }
 
-  function closeNav() {
-    mobileNav.classList.remove('open');
-    closeBtn.classList.remove('visible');
+  function closeSidebar() {
+    mobileSidebar.classList.remove('open');
+    backdrop.classList.remove('open');
     document.body.style.overflow = '';
   }
 
-  document.querySelector('.nav-hamburger').addEventListener('click', openNav);
-  closeBtn.addEventListener('click', closeNav);
-  document.querySelectorAll('#mobile-nav a').forEach(a => a.addEventListener('click', closeNav));
-
-  window.addEventListener('resize', () => {
-    if (mobileNav.classList.contains('open')) {
-      mobileNav.style.height = window.innerHeight + 'px';
-    }
-  });
+  document.querySelector('.nav-hamburger').addEventListener('click', openSidebar);
+  closeBtn.addEventListener('click', closeSidebar);
+  backdrop.addEventListener('click', closeSidebar);
+  mobileSidebar.querySelectorAll('a').forEach(a => a.addEventListener('click', closeSidebar));
 
   // Highlight active sidebar link on scroll
   const sections = document.querySelectorAll('.section[id]');

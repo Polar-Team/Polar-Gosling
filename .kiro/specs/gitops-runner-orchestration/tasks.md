@@ -742,28 +742,28 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - **Property 30: Cron Job Scheduling**
   - **Validates: Requirements 13.7**
 
-- [ ] 28. Multi-Cloud Consistency
+- [x] 28. Multi-Cloud Consistency
   - Implement cloud-agnostic runner behavior
   - Test deployment to both Yandex Cloud and AWS
   - Verify equivalent behavior across clouds
   - _Requirements: 9.7, 9.8_
 
-- [ ] 28.1 Write property test for multi-cloud deployment consistency
+- [x] 28.1 Write property test for multi-cloud deployment consistency
   - **Property 23: Multi-Cloud Deployment Consistency**
   - **Validates: Requirements 9.8**
 
-- [ ] 29. Security Implementation
+- [-] 29. Security Implementation
   - Implement data encryption at rest
   - Implement TLS for runner communication
   - Set up IAM roles for cloud authentication
   - Implement secret injection from secure storage
   - _Requirements: 16.2, 16.3, 16.4, 16.5, 16.7_
 
-- [ ] 29.1 Write property test for data encryption at rest
+- [x] 29.1 Write property test for data encryption at rest
   - **Property 34: Data Encryption at Rest**
   - **Validates: Requirements 16.4**
 
-- [ ] 29.2 Write property test for communication encryption
+- [x] 29.2 Write property test for communication encryption
   - **Property 35: Communication Encryption**
   - **Validates: Requirements 16.5**
 

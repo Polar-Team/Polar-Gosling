@@ -136,6 +136,7 @@ MOTHERGOOSE_MODELS: dict[str, Any] = {
     },
     "EggConfig": {
         "description": "Parsed configuration for a single Egg or EggsBucket from the Nest repo.",
+        "factory": "generate_new_eggconfig(name, git_commit, git_repo_url_secret, gitlab_token_secret_uri, gitlab_webhook_secret_uri) -> EggConfig  # canonical factory; all sensitive fields must be secret URI references",
         "fields": {
             "id": {"type": "str", "description": "UUID"},
             "name": {"type": "str", "description": "Egg name (directory name under Eggs/)"},
@@ -228,6 +229,23 @@ MOTHERGOOSE_SERVICES: list[dict[str, Any]] = [
         "module": "services.secret_manager",
         "description": "Resolves secret URIs (yc-lockbox://, aws-sm://, vault://) to plaintext values. Uses SecretCache for TTL-based caching.",
         "methods": ["get_secret(uri)", "_yc_lockbox(uri)", "_aws_sm(uri)", "_vault(uri)"],
+    },
+    {
+        "name": "SecretReference",
+        "module": "services.secret_manager",
+        "description": "Parsed representation of a secret URI (yc-lockbox://, aws-sm://, vault://). Stores backend, secret_id, and key as structured fields. __repr__ is safe to log — it shows structural metadata only, never the full raw URI or resolved value.",
+        "methods": ["__init__(uri: str)", "__repr__()"],
+        "attributes": ["backend: str", "secret_id: str", "key: str"],
+    },
+    {
+        "name": "SecretMasker",
+        "module": "services.secret_manager",
+        "description": "Utility class for masking sensitive values before they appear in logs or error messages. mask_dict() replaces values of sensitive keys (token, password, secret, api_key, runner_token, webhook_secret, private_key, access_key, secret_key) with '***MASKED***', recursively for nested dicts. mask_string() replaces secret URI paths (everything after the scheme://) with '***MASKED***' while preserving the scheme prefix for context.",
+        "methods": [
+            "mask_dict(data: dict) -> dict  # replaces sensitive key values with '***MASKED***', recursive",
+            "mask_string(text: str) -> str  # replaces secret URI paths in log strings with '***MASKED***'",
+        ],
+        "sensitive_keys": ["token", "password", "secret", "api_key", "runner_token", "webhook_secret", "private_key", "access_key", "secret_key"],
     },
     {
         "name": "RunnerOrchestrationService",

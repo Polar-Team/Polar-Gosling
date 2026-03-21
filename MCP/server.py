@@ -127,7 +127,7 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="get_database_schema",
-        description="Get all YDB/DynamoDB table schemas: runners, egg_configs, sync_history, deployment_plans, audit_logs, tofu_versions, gosling_version.",
+        description="Get all YDB/DynamoDB table schemas: runners, egg_configs, sync_history, deployment_plans, audit_logs, binary_versions.",
         inputSchema={"type": "object", "properties": {}, "required": []},
     ),
     Tool(

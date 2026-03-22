@@ -80,15 +80,15 @@ GOSLING_COMMANDS: list[dict[str, Any]] = [
     {
         "name": "deploy",
         "usage": "gosling deploy [flags]",
-        "description": "Read all Egg configurations from the Nest, compute a config hash, and apply changes via the MotherGoose API. Skips eggs where the config hash is unchanged.",
+        "description": "Bootstrap MotherGoose/UglyFox infrastructure by reading MG/ and UF/ .fly configs from the Nest, then provisioning cloud resources (YDB, YMQ, S3, Container Registry, Serverless Containers, API Gateway, Timer Triggers) via cloud SDKs. Cloud provider and region are read from the cloud {} block in the .fly files — no --cloud or --region flags needed. After all resources are created, triggers an initial Git sync.",
         "flags": [
             {"flag": "--api-url", "type": "string", "required": True, "description": "MotherGoose API base URL"},
             {"flag": "--api-key", "type": "string", "required": True, "description": "MotherGoose API authentication key"},
-            {"flag": "--cloud", "type": "string", "required": True, "values": ["yandex", "aws"], "description": "Cloud provider"},
-            {"flag": "--region", "type": "string", "required": True, "description": "Target cloud region"},
+            {"flag": "--name", "type": "string", "required": False, "description": "Deploy a specific named MotherGoose/UglyFox instance (omit to deploy all instances)"},
             {"flag": "--dry-run", "type": "bool", "default": False, "description": "Preview changes without applying"},
         ],
-        "example": "gosling deploy --cloud yandex --region ru-central1-a --api-url https://mg.example.com --api-key $MG_API_KEY --dry-run",
+        "note": "Cloud provider and region come from the cloud {} block inside the mothergoose .fly file. --cloud and --region flags were removed in favour of .fly-driven config.",
+        "example": "gosling deploy --api-url https://mg.example.com --api-key $MG_API_KEY --name yandex_test --dry-run",
     },
     {
         "name": "rollback",
@@ -246,9 +246,15 @@ FLY_LANGUAGE_REFERENCE: dict[str, Any] = {
             },
         },
         "uglyfox": {
-            "location": "UF/config.fly",
-            "description": "UglyFox lifecycle and pruning configuration.",
+            "location": "UF/*.fly (multiple files allowed; multiple blocks per file allowed)",
+            "description": "UglyFox lifecycle and pruning configuration. Has a label (instance name) and a mothergoose attribute that references a named MotherGoose instance. UglyFox does NOT have its own cloud block — it inherits cloud settings from the referenced MotherGoose instance.",
+            "label": "instance name — e.g. uglyfox \"yandex_test\" { ... }",
+            "required_attributes": {
+                "mothergoose": {"type": "string", "description": "Name of the MotherGoose instance to reference (e.g. \"yandex_test\"). Cloud settings are copied from that instance."},
+            },
             "nested_blocks": {
+                "workers": {"description": "ServerlessContainerConfig for UglyFox Celery worker container"},
+                "service_account": {"description": "ServiceAccountConfig for UglyFox"},
                 "pruning": {
                     "failed_threshold": {"type": "number", "constraints": "1–100", "description": "Terminate after N failures"},
                     "max_age": {"type": "string", "description": "Max runner lifetime duration"},
@@ -271,9 +277,29 @@ FLY_LANGUAGE_REFERENCE: dict[str, Any] = {
             },
         },
         "mothergoose": {
-            "location": "MG/config.fly",
-            "description": "MotherGoose infrastructure configuration: API Gateway, queues, triggers, containers.",
-            "nested_blocks": ["api_gateway", "message_queue", "cloud_trigger", "container"],
+            "location": "MG/*.fly (multiple files allowed; multiple blocks per file allowed)",
+            "description": "MotherGoose infrastructure configuration. Has a label (instance name). Defines cloud provider, API Gateway, FastAPI app container, Celery worker container, message queues, cloud triggers, YDB database, S3 storage, and service accounts. Multiple named instances can coexist (e.g. yandex_test, aws_prod).",
+            "label": "instance name — e.g. mothergoose \"yandex_test\" { ... }",
+            "nested_blocks": {
+                "cloud": {
+                    "provider": {"type": "string", "values": ["yandex", "aws"]},
+                    "yc_folder_id": {"type": "string", "description": "Required when provider=yandex"},
+                    "yc_cloud_id": {"type": "string", "description": "Required when provider=yandex"},
+                    "aws_region": {"type": "string", "description": "Required when provider=aws"},
+                    "aws_account_id": {"type": "string", "description": "Required when provider=aws"},
+                },
+                "api_gateway": {
+                    "domain": {"type": "string"},
+                    "cors": {"type": "block", "description": "CORS configuration"},
+                },
+                "fast_api_app": {"description": "ServerlessContainerConfig for the FastAPI container"},
+                "celery_workers": {"description": "ServerlessContainerConfig for the Celery worker container"},
+                "message_queues": {"description": "List of MessageQueueConfig blocks (name, visibility_timeout, retention_period, dlq)"},
+                "triggers": {"description": "List of TriggerConfig blocks (name, schedule cron, endpoint, method, service_account)"},
+                "database": {"description": "DatabaseConfig — YDB serverless database settings"},
+                "storage": {"description": "StorageConfig — single unified S3 bucket (bucket_name, region). Static folder prefixes are hardcoded: binaries/, plans/, cache/, rift/"},
+                "service_accounts": {"description": "List of ServiceAccountConfig blocks (name, roles)"},
+            },
         },
     },
     "validation_error_format": {

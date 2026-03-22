@@ -460,11 +460,11 @@ vim Eggs/my-app/config.fly</code></pre>
       <pre><code><span class="cmt"># Validate all .fly files</span>
 gosling validate
 
-<span class="cmt"># Preview changes (dry run)</span>
-gosling deploy --cloud yandex --region ru-central1-a --api-url https://mg.example.com --api-key $MG_KEY --dry-run
+<span class="cmt"># Preview changes (dry run) — cloud/region read from MG/*.fly</span>
+gosling deploy --api-url https://mg.example.com --api-key $MG_KEY --dry-run
 
 <span class="cmt"># Apply</span>
-gosling deploy --cloud yandex --region ru-central1-a --api-url https://mg.example.com --api-key $MG_KEY</code></pre>
+gosling deploy --api-url https://mg.example.com --api-key $MG_KEY</code></pre>
     </section>
 
     <!-- INSTALLATION -->
@@ -658,29 +658,34 @@ gosling parse UF/config.fly --type uglyfox</code></pre>
         </div>
         <div class="cmd-body">
           <code class="cmd-usage">gosling deploy [flags]</code>
-          <p>Reads all Egg configurations from the Nest, computes a config hash, and applies changes via the MotherGoose API. Skips eggs where the config hash is unchanged.</p>
+          <p>Reads <code>MG/</code> and <code>UF/</code> configs from the Nest to determine cloud provider and region (no flags needed — cloud settings come from the <code>cloud</code> block in <code>MG/*.fly</code>). Computes a config hash for each Egg and applies changes via the MotherGoose API. Skips eggs where the config hash is unchanged.</p>
           <table>
             <tr><th>Flag</th><th>Required</th><th>Description</th></tr>
             <tr><td class="flag-name">--api-url</td><td><span class="flag-required">required</span></td><td>MotherGoose API base URL</td></tr>
             <tr><td class="flag-name">--api-key</td><td><span class="flag-required">required</span></td><td>MotherGoose API authentication key</td></tr>
-            <tr><td class="flag-name">--cloud</td><td><span class="flag-required">required</span></td><td>Cloud provider: <code>yandex</code> or <code>aws</code></td></tr>
-            <tr><td class="flag-name">--region</td><td><span class="flag-required">required</span></td><td>Target cloud region</td></tr>
+            <tr><td class="flag-name">--name</td><td><span class="flag-optional">optional</span></td><td>Deploy a specific MotherGoose instance by name; if omitted, deploys all instances</td></tr>
             <tr><td class="flag-name">--dry-run</td><td><span class="flag-optional">optional</span></td><td>Preview changes without applying</td></tr>
           </table>
           <pre><code><span class="cmt"># Dry run — preview what would change</span>
 gosling deploy \
-  --cloud yandex \
-  --region ru-central1-a \
   --api-url https://mg.example.com \
   --api-key $MG_API_KEY \
   --dry-run
 
-<span class="cmt"># Apply deployment</span>
+<span class="cmt"># Deploy all instances (cloud/region read from MG/*.fly)</span>
 gosling deploy \
-  --cloud aws \
-  --region us-east-1 \
   --api-url https://mg.example.com \
-  --api-key $MG_API_KEY</code></pre>
+  --api-key $MG_API_KEY
+
+<span class="cmt"># Deploy a specific named instance</span>
+gosling deploy \
+  --api-url https://mg.example.com \
+  --api-key $MG_API_KEY \
+  --name yandex-prod</code></pre>
+          <div class="callout callout-info">
+            <strong>ℹ️ Cloud settings from .fly files</strong>
+            The <code>--cloud</code> and <code>--region</code> flags are not needed. Cloud provider and region are resolved from the <code>cloud</code> block inside each <code>mothergoose</code> block in <code>MG/*.fly</code>.
+          </div>
         </div>
       </div>
     </section>
@@ -903,8 +908,20 @@ gosling status --all --api-url https://mg.example.com --api-key $MG_API_KEY</cod
     <!-- UGLYFOX BLOCK -->
     <section class="section" id="fly-uglyfox">
       <h3>uglyfox block</h3>
-      <p>Defines runner lifecycle policies for the UglyFox service. Lives at <code>UF/config.fly</code>. Controls pruning thresholds, Apex/Nadir pool sizes, and lifecycle rules.</p>
-      <pre><code><span class="kw">uglyfox</span> {
+      <p>Defines runner lifecycle policies for the UglyFox service. Lives at <code>UF/config.fly</code>. Controls pruning thresholds, Apex/Nadir pool sizes, and lifecycle rules. References a <code>mothergoose</code> instance by name — cloud settings are inherited from it.</p>
+      <pre><code><span class="kw">uglyfox</span> <span class="label">"yandex-prod"</span> {
+  <span class="attr">mothergoose</span> = <span class="str">"yandex-prod"</span>  <span class="cmt"># references mothergoose instance in MG/*.fly</span>
+
+  <span class="kw">workers</span> {
+    <span class="attr">name</span>              = <span class="str">"uglyfox-worker"</span>
+    <span class="attr">image</span>             = <span class="str">"cr.yandex/xxx/uglyfox:latest"</span>
+    <span class="attr">memory</span>            = <span class="num">512</span>
+    <span class="attr">cores</span>             = <span class="num">1</span>
+    <span class="attr">execution_timeout</span> = <span class="str">"600s"</span>
+    <span class="attr">concurrency</span>       = <span class="num">2</span>
+    <span class="attr">service_account</span>   = <span class="str">"uf-worker-sa"</span>
+  }
+
   <span class="kw">pruning</span> {
     <span class="attr">failed_threshold</span> = <span class="num">3</span>       <span class="cmt"># terminate after N failures (1–100)</span>
     <span class="attr">max_age</span>          = <span class="str">"24h"</span>   <span class="cmt"># max runner lifetime</span>

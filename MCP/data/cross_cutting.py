@@ -140,6 +140,17 @@ DATABASE_SCHEMA: dict[str, Any] = {
         "deployment_plans.egg_name → egg_configs.name (logical FK)",
         "binary_versions.binary_name ∈ {gosling, opentofu} (discriminator column)",
     ],
+    "storage_model": {
+        "description": "Single unified S3 bucket with static folder prefixes. Bucket name configured via MOTHERGOOSE_S3_BUCKET. Folder prefixes are hardcoded constants — never configurable.",
+        "folder_prefixes": {
+            "binaries/": "Binary files: binaries/{binary_name}/{version}/{binary_name}[.exe]",
+            "plans/": "OpenTofu plan binaries: plans/{egg_name}/{plan_id}.tfplan",
+            "cache/": "OpenTofu provider/module cache: cache/providers/..., cache/modules/...",
+            "rift/": "Rift Docker image tarballs: rift/{image_name}/{tag}.tar",
+        },
+        "active_version_resolution": "Active binary path resolved from binary_versions table at runtime (is_active=1). No symlinks. Path: /mnt/s3-storage/binaries/{binary_name}/{version}/{binary_name}",
+        "mount_point": "/mnt/s3-storage (s3fs mount, unified bucket)",
+    },
 }
 
 ARCHITECTURE_OVERVIEW: dict[str, Any] = {
@@ -194,22 +205,32 @@ ARCHITECTURE_OVERVIEW: dict[str, Any] = {
                 "Parse .fly files to JSON (used by MotherGoose as subprocess)",
                 "Scaffold new Nest repos and Egg/Job configs",
                 "Validate .fly files locally",
+                "Format .fly files to canonical style (gosling fmt)",
+                "Bootstrap MotherGoose/UglyFox infrastructure via cloud SDKs (gosling deploy)",
                 "Trigger deployments and check status via MotherGoose API",
                 "Runner entrypoint inside deployed containers/VMs (gosling runner)",
                 "Rift server entrypoint on Rift VMs (rift serve — separate binary, shared internal/rift/ package)",
             ],
             "repo": "Polar-Gosling",
             "packages": {
-                "internal/cli": "Command implementations (init, add, validate, deploy, rollback, parse, status, runner, rift)",
-                "internal/parser": ".fly file parser and AST",
+                "internal/cli": "Command implementations (init, add, validate, fmt, deploy, rollback, parse, status, runner)",
+                "internal/parser": ".fly file parser, AST, and formatter",
                 "internal/mothergoose": "MotherGoose API client",
-                "internal/deployer": "Cloud SDK integrations (Yandex Cloud + AWS), .fly-to-SDK converter",
+                "internal/deployer": "Bootstrap orchestrator + cloud clients. Reads MGConfig/UFConfig from MG/ and UF/ .fly files. YandexCloudClient provisions YDB, YMQ, S3, Container Registry, Serverless Containers, API Gateway, Timer Triggers. AWSClient provisions equivalent AWS resources.",
                 "internal/runner": "GitLab Runner Agent manager, metrics collector, tag router",
                 "internal/gitlab": "GitLab Go SDK integration",
                 "internal/rift": "Rift server implementation (Docker proxy, image cache)",
                 "cmd/gosling": "Gosling CLI binary entry point",
                 "cmd/rift": "Rift server binary entry point",
             },
+            "bootstrap_flow": [
+                "gosling deploy reads MG/*.fly → ParseMGDirectory() → []*MGConfig",
+                "gosling deploy reads UF/*.fly → ParseUFDirectory(mgConfigs) → []*UFConfig (cloud inherited from MGConfig)",
+                "Deployer.DeployBackendInfrastructure(ctx, mgCfg, ufCfg) dispatches to YandexCloudClient or AWSClient",
+                "Cloud client creates resources in order: IAM service accounts → YDB → S3 bucket → YMQ queues → Container Registry + image push → MG containers → UF containers → API Gateway → Timer Triggers",
+                "After bootstrap: POST /internal/sync-git triggers initial Nest sync",
+                "All create calls are idempotent (existence-checked before creation)",
+            ],
         },
         "ComputeModule": {
             "type": "OpenTofu/Terraform module",

@@ -75,8 +75,15 @@ mothergoose "yandex_prod" {
   }
 
   storage {
-    bucket_name = "mg-tofu-states"
-    region      = "ru-central1"
+    state_bucket {
+      name       = "mg-tofu-states"
+      versioning = true
+    }
+
+    binary_bucket {
+      name       = "mg-binaries"
+      versioning = false
+    }
   }
 
   service_account {
@@ -115,8 +122,10 @@ mothergoose "aws_staging" {
   }
 
   storage {
-    bucket_name = "mg-tofu-states-aws"
-    region      = "us-east-1"
+    state_bucket {
+      name       = "mg-tofu-states-aws"
+      versioning = true
+    }
   }
 }
 `
@@ -193,8 +202,17 @@ func TestParseMGDirectory_SingleFile(t *testing.T) {
 	if mg.Database.ServerlessMode != true {
 		t.Error("expected database serverless_mode true")
 	}
-	if mg.Storage.BucketName != "mg-tofu-states" {
-		t.Errorf("expected bucket 'mg-tofu-states', got %q", mg.Storage.BucketName)
+	if mg.Storage.StateBucket.Name != "mg-tofu-states" {
+		t.Errorf("expected state bucket 'mg-tofu-states', got %q", mg.Storage.StateBucket.Name)
+	}
+	if mg.Storage.StateBucket.Versioning != true {
+		t.Error("expected state bucket versioning true")
+	}
+	if mg.Storage.BinaryBucket.Name != "mg-binaries" {
+		t.Errorf("expected binary bucket 'mg-binaries', got %q", mg.Storage.BinaryBucket.Name)
+	}
+	if mg.Storage.BinaryBucket.Versioning != false {
+		t.Error("expected binary bucket versioning false")
 	}
 	if len(mg.ServiceAccounts) != 1 {
 		t.Fatalf("expected 1 service account, got %d", len(mg.ServiceAccounts))

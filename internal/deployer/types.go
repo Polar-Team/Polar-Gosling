@@ -13,6 +13,12 @@ const (
 	CloudProviderAWS    CloudProvider = "aws"
 )
 
+// Default GHCR source registry for backend container images.
+const (
+	GHCRMotherGooseImage = "ghcr.io/polar-team/mothergoose"
+	GHCRUglyFoxImage     = "ghcr.io/polar-team/uglyfox"
+)
+
 // RunnerType represents the type of runner
 type RunnerType string
 

@@ -319,6 +319,73 @@ MOTHERGOOSE_SERVICES: list[dict[str, Any]] = [
         "description": "Periodically checks GitHub for new Gosling and OpenTofu releases, downloads them to the mounted S3 filesystem, and stores version metadata. Does NOT auto-activate — activation is a manual admin action.",
         "methods": ["check_latest_gosling_version()", "upload_gosling_from_github(version)", "check_latest_opentofu_version()"],
     },
+    {
+        "name": "GoslingConfiguration",
+        "module": "services.gosling_configuration",
+        "description": "Manages the Gosling CLI binary lifecycle (download, update, active path). Wraps UpdateGithub/UpdateOtherSource to ensure the binary is up-to-date and provides the active binary_path for FlyParserService subprocess calls.",
+        "methods": ["setup_gosling_configuration()"],
+        "properties": ["binary_path", "updater_rollback", "updater_auth_url", "updater_rollback_factor"],
+    },
+    {
+        "name": "MultiCloudConsistencyService",
+        "module": "services.multi_cloud_consistency",
+        "description": "Enforces cloud-agnostic runner behaviour (Req 9.8). Builds normalised RunnerDeploymentConfig for any (Egg, cloud) pair and validates structural equivalence across Yandex Cloud and AWS deployments.",
+        "methods": ["build_deployment_config(egg_config, cloud_provider, region, state_bucket)", "assert_equivalent(yandex_config, aws_config)"],
+        "data_classes": ["RunnerDeploymentConfig(egg_name, runner_type, timeout_minutes, tags, concurrent, cloud_provider, region, provider_name, backend_bucket, backend_key, backend_region)"],
+    },
+    {
+        "name": "CommunicationEncryptionService",
+        "module": "services.communication_encryption",
+        "description": "Validates that all communication endpoints use encrypted transport (HTTPS, gRPCS, SSH). Enforces Req 16.5. Audits Egg configs for plaintext violations. Allows metadata server (169.254.169.254) as the only plaintext exception.",
+        "methods": ["validate_endpoint(url)", "gitlab_server_to_https_url(server_fqdn)", "audit_egg_communication(egg_name, egg_config)"],
+        "data_classes": ["EndpointValidationResult(endpoint, is_encrypted, scheme, violation_reason)", "CommunicationAuditResult(egg_name, endpoints)"],
+    },
+    {
+        "name": "YandexCloudIAMAuth",
+        "module": "services.iam_auth",
+        "description": "Yandex Cloud IAM authentication helper. Retrieves IAM tokens and folder_id from metadata server (magic link) or static configuration. Used by YandexCloudTriggerManager.",
+        "methods": ["get_token_serverless()", "get_folder_id_serverless()"],
+    },
+    {
+        "name": "CloudTriggerManager / YandexCloudTriggerManager / AWSEventBridgeManager",
+        "module": "services.cloud_triggers",
+        "description": "Manages cloud triggers for periodic tasks. CloudTriggerManager is the ABC. YandexCloudTriggerManager creates YC Timer Triggers. AWSEventBridgeManager creates EventBridge Scheduler rules. Both create git-sync (5 min) and health-check (10 min) triggers.",
+        "methods": ["create_git_sync_trigger()", "create_health_check_trigger()", "delete_trigger(trigger_id)", "list_triggers(folder_id)"],
+        "factory": "create_trigger_manager(cloud_provider, ...) -> CloudTriggerManager",
+    },
+    {
+        "name": "MetricsService",
+        "module": "services.metrics_service",
+        "description": "In-process metrics registry and service for runner provisioning, termination, job execution, pool sizes, webhook events, and git sync. Renders Prometheus-compatible text output. Uses MetricsRegistry for counters, gauges, and histograms.",
+        "methods": ["record_runner_provisioned(...)", "record_runner_terminated(...)", "record_job_execution(...)", "record_pool_sizes(...)", "record_webhook_event(...)", "record_git_sync(...)", "render()"],
+        "helpers": ["MetricsRegistry(counter_inc, gauge_set, histogram_observe, render)", "ProvisioningTimer (context manager)"],
+    },
+    {
+        "name": "SelfManagementJobsService",
+        "module": "services.self_management_jobs",
+        "description": "Manages self-management jobs defined in Nest Jobs/ directory. Parses job configs, validates cron schedules, enforces job runner constraints (10-min timeout, no Rift). Provides GitLab scheduled pipeline config for Gosling CLI bootstrap.",
+        "methods": ["load_jobs(raw_jobs)", "get_job(name)", "list_jobs()", "get_gitlab_pipeline_config(job)", "validate_job_runner_constraints(job)"],
+        "helpers": ["parse_job_config(raw) -> JobConfig", "is_valid_cron_expression(expression) -> bool"],
+        "data_classes": ["JobConfig(name, schedule, runner_type, runner_tags, script, timeout_minutes, rift_allowed)"],
+    },
+    {
+        "name": "RunnerService",
+        "module": "services.runner_service",
+        "description": "CRUD and state management for Runner records in the database. Creates runners, updates state with audit logging, queries by ID/egg_name, and lists all runners.",
+        "methods": ["create_runner(egg_name, type, cloud_provider, region, ...)", "update_runner_state(runner_id, new_state)", "update_runner_state_with_audit(runner_id, new_state, actor, reason)", "get_runner(runner_id)", "list_runners_by_egg(egg_name)", "list_all_runners()"],
+    },
+    {
+        "name": "AWSUsagePlanManager",
+        "module": "services.aws_usage_plan_manager",
+        "description": "Manages AWS API Gateway Usage Plans for rate limiting and throttling. Configures per-method throttle settings for MotherGoose API endpoints. AWS-specific (YC uses OpenAPI spec for rate limits).",
+        "methods": ["create_usage_plan(name, description, api_id, stage_name, ...)", "update_method_throttle(usage_plan_id, resource_path, http_method, burst_limit, rate_limit)", "configure_mothergoose_usage_plan(api_id, stage_name)", "delete_usage_plan(usage_plan_id)", "list_usage_plans()"],
+    },
+    {
+        "name": "S3ArtifactCache",
+        "module": "services.s3_artifact_cache",
+        "description": "Caches OpenTofu provider plugins, modules, terraform directories, and lock files in S3 to speed up deployments. Supports checksum verification and cache invalidation.",
+        "methods": ["cache_provider_plugin(...)", "get_cached_provider_plugin(...)", "cache_module(...)", "get_cached_module(...)", "cache_terraform_dir(...)", "get_cached_terraform_dir(...)", "cache_lock_file(...)", "get_cached_lock_file(...)", "invalidate_cache(...)", "compute_checksum(file_path)", "verify_cache_integrity(...)"],
+    },
 ]
 
 MOTHERGOOSE_ENV_VARS: list[dict[str, Any]] = [

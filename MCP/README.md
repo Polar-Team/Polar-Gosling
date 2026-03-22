@@ -26,6 +26,20 @@ An MCP (Model Context Protocol) server that exposes structured information about
 | `get_steering_product` | Product overview: services, key concepts, Nest repo structure, .fly file types, cloud targets |
 | `get_steering_structure` | Full project structure: repository layout, directory conventions, file locations for all three repos |
 | `get_steering_tech` | Tech stack: languages, frameworks, code quality tools, common commands, dependency management |
+| `get_yc_grpc_overview` | Yandex Cloud gRPC API overview: common patterns, auth, async operations, pagination |
+| `get_yc_services_index` | Index of all YC gRPC services with endpoints and tool names |
+| `get_yc_api_gateway` | YC API Gateway gRPC API: ApiGatewayService RPCs, OpenAPI spec management |
+| `get_yc_object_storage` | YC Object Storage (S3) gRPC API: BucketService, HTTPS config, inventory |
+| `get_yc_ydb` | YC Managed YDB gRPC API: DatabaseService, BackupService, LocationService |
+| `get_yc_serverless_containers` | YC Serverless Containers gRPC API: ContainerService, DeployRevision |
+| `get_yc_compute` | YC Compute gRPC API: InstanceService, DiskService, ImageService |
+| `get_yc_lockbox` | YC Lockbox gRPC API: SecretService, PayloadService |
+| `get_yc_vpc` | YC VPC gRPC API: NetworkService, SubnetService, SecurityGroupService |
+| `get_yc_iam` | YC IAM gRPC API: IamTokenService, ServiceAccountService, KeyService |
+| `get_yc_container_registry` | YC Container Registry gRPC API: RegistryService, ImageService, ScannerService |
+| `get_yc_resource_manager` | YC Resource Manager gRPC API: CloudService, FolderService |
+| `get_yc_triggers` | YC Serverless Triggers gRPC API: Timer, MessageQueue, ObjectStorage, Logging, etc. |
+| `get_yc_message_queue` | YC Message Queue (YMQ) SQS-compatible HTTP API: queue/message operations, Celery broker config |
 
 ## Setup
 

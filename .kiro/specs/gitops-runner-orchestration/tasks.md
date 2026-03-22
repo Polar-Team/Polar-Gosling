@@ -878,6 +878,161 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
     - **Property 48: Parse Error Leaves File Unmodified** — file content is byte-for-byte identical after a parse error
       - _Requirements: 24.13_
 
+## Gosling CLI Bootstrap Infrastructure Implementation
+
+- [x] 38. Add MGConfig/UFConfig types and directory parsers
+  - Create `internal/deployer/mg_config.go`
+  - MotherGoose configs live in `MG/` directory; UglyFox configs live in `UF/` directory (separate directories)
+  - `MG/` can contain multiple `.fly` files, and a single file can contain multiple `mothergoose` blocks
+  - `UF/` can contain multiple `.fly` files, and a single file can contain multiple `uglyfox` blocks
+  - `mothergoose` block has a label (instance name): `mothergoose "yandex_test" { cloud { ... } ... }`
+  - `uglyfox` block has a label and a `mothergoose` reference: `uglyfox "yandex_test" { mothergoose = "yandex_test" ... }`
+  - UglyFox does NOT have its own `cloud` block — it inherits cloud settings from the referenced MotherGoose instance
+  - `MGConfig` struct:
+    - `Name string` — the instance label (e.g. `"yandex_test"`)
+    - `Cloud CloudBlockConfig` — `cloud { provider = "yandex", yc_folder_id = "xxx", yc_cloud_id = "xxx" }`
+    - `APIGateway APIGatewayConfig`
+    - `FastAPIApp ServerlessContainerConfig`
+    - `CeleryWorkers ServerlessContainerConfig`
+    - `MessageQueues []MessageQueueConfig`
+    - `Triggers []TriggerConfig` (name, schedule, endpoint, method, service_account)
+    - `Database DatabaseConfig`
+    - `Storage StorageConfig`
+    - `ServiceAccounts []ServiceAccountConfig`
+  - `UFConfig` struct:
+    - `Name string` — the instance label
+    - `MotherGooseRef string` — name of the referenced MotherGoose instance (e.g. `"yandex_test"`)
+    - `Cloud CloudBlockConfig` — resolved at parse time by copying from the matched MGConfig
+    - `Workers ServerlessContainerConfig`
+    - `ServiceAccount ServiceAccountConfig`
+  - `CloudBlockConfig` struct: `Provider CloudProvider`, `YCFolderID string`, `YCCloudID string`, `AWSRegion string`, `AWSAccountID string`
+  - Implement `ParseMGDirectory(dirPath string) ([]*MGConfig, error)`:
+    - Scan all `*.fly` files in `MG/` directory
+    - Parse each file, collect all `mothergoose` blocks into `[]*MGConfig`
+  - Implement `ParseUFDirectory(dirPath string, mgConfigs []*MGConfig) ([]*UFConfig, error)`:
+    - Scan all `*.fly` files in `UF/` directory
+    - Parse each file, collect all `uglyfox` blocks
+    - For each `uglyfox` block, resolve `mothergoose = "name"` reference against `mgConfigs`
+    - Copy `Cloud` from the matched `MGConfig` into `UFConfig.Cloud`
+    - Error if referenced MotherGoose instance not found
+  - Validate: if `provider = "yandex"` then `yc_folder_id` and `yc_cloud_id` must be non-empty; if `provider = "aws"` then `aws_region` must be non-empty
+  - Add unit tests with:
+    - Single MG file + single UF file referencing it
+    - Multiple MG instances, UF referencing one of them
+    - UF referencing non-existent MG instance (expect error)
+    - Multiple files in both directories
+  - _Requirements: 1.11, 1.12, 1.13, 1.14, 1.15, 1.16, 1.17_
+
+- [ ] 39. Fix `deployer.go` — wire MGConfig/UFConfig through Deployer and cloud clients
+  - Update `Deployer.DeployBackendInfrastructure` signature to `(ctx context.Context, mgCfg *MGConfig, ufCfg *UFConfig) error`
+  - Determine cloud provider from `mgCfg.Cloud.Provider` (no separate `provider` parameter needed)
+  - Pass both configs through to cloud client: `d.yandexClient.DeployBackendInfrastructure(ctx, mgCfg, ufCfg)`
+  - Update `NewYandexCloudClient` to accept `folderID string` and `cloudID string` from `mgCfg.Cloud`
+  - Update `NewAWSClient` to accept region from `mgCfg.Cloud.AWSRegion`
+  - Update `YandexCloudClient.DeployBackendInfrastructure` signature to `(ctx context.Context, mgCfg *MGConfig, ufCfg *UFConfig) error`
+  - Update `AWSClient.DeployBackendInfrastructure` signature to `(ctx context.Context, mgCfg *MGConfig, ufCfg *UFConfig) error`
+  - Update `deploy.go` `runDeploy()` to: find Nest root → `ParseMGDirectory(nestRoot/MG/)` → `ParseUFDirectory(nestRoot/UF/, mgConfigs)` → match MG/UF pairs by name → pass to `deployer.DeployBackendInfrastructure`
+  - Remove `--cloud` and `--region` flags from deploy command (cloud info comes from `cloud` block in `.fly` files)
+  - Add `--name` flag to select a specific instance to deploy (optional — if omitted, deploy all instances)
+  - _Requirements: 1.11, 1.12, 1.13, 1.14, 1.15, 1.16, 1.17, 3.9, 3.11_
+
+- [ ] 40. Implement Yandex Cloud Bootstrap Infrastructure (`yandex_client.go`)
+  - Replace stub `DeployBackendInfrastructure` with full implementation driven by `MGConfig` + `UFConfig`
+  - Implement each sub-step as a private method; call them in sequence from `DeployBackendInfrastructure`
+  - Print progress for each resource: `fmt.Printf("[%s] Creating %s...\n", mgCfg.Name, resourceName)`
+  - Return first error encountered (fail-fast)
+  - _Requirements: 1.11, 1.12, 1.13, 1.14, 1.15, 1.16, 1.17, 3.9, 9.1_
+
+- [ ] 40.1 Implement IAM service account creation
+  - Add `createServiceAccounts(ctx context.Context, mgCfg *MGConfig, ufCfg *UFConfig) error` to `YandexCloudClient`
+  - Use `sdk.IAM().ServiceAccounts().Create()` with `FolderId` from `mgCfg.Cloud.YCFolderID`
+  - Create MotherGoose service accounts from `mgCfg.ServiceAccounts` and UglyFox service account from `ufCfg.ServiceAccount`
+  - Assign roles via `sdk.ResourceManager().Folders().UpdateAccessBindings()` on `mgCfg.Cloud.YCFolderID`
+  - Skip creation if service account already exists (idempotent — list by name before creating)
+  - _Requirements: 3.9, 9.1_
+
+- [ ] 40.2 Implement YDB serverless database creation
+  - Add `createYDBDatabase(ctx context.Context, mgCfg *MGConfig) error` to `YandexCloudClient`
+  - Use `sdk.YDB().Database().Create()` with `ServerlessDatabase` config from `mgCfg.Database`
+  - Wait for database to reach `RUNNING` state (poll every 5s, timeout 5min)
+  - Store database endpoint on `YandexCloudClient` for use by subsequent steps
+  - Skip creation if database with same name already exists
+  - _Requirements: 1.11, 9.1, 14.1_
+
+- [ ] 40.3 Implement Object Storage (S3-compatible) bucket creation
+  - Add `createStorageBuckets(ctx context.Context, mgCfg *MGConfig) error` to `YandexCloudClient`
+  - Use AWS SDK v2 with Yandex Cloud S3-compatible endpoint (`storage.yandexcloud.net`) to create buckets from `mgCfg.Storage`
+  - Enable versioning on state bucket (`mgCfg.Storage.StateBucket.Versioning = true`)
+  - Skip creation if bucket already exists (idempotent)
+  - _Requirements: 1.11, 9.1_
+
+- [ ] 40.4 Implement YMQ message queue creation
+  - Add `createMessageQueues(ctx context.Context, mgCfg *MGConfig) error` to `YandexCloudClient`
+  - Use AWS SDK v2 SQS client with Yandex Cloud YMQ endpoint (`message-queue.api.cloud.yandex.net`) to create queues from `mgCfg.MessageQueues`
+  - Create dead-letter queues first, then main queues with `RedrivePolicy` referencing DLQ ARN
+  - Set `VisibilityTimeout` and `MessageRetentionPeriod` from config
+  - Skip creation if queue already exists (idempotent)
+  - _Requirements: 1.16, 9.1_
+
+- [ ] 40.5 Implement Yandex Container Registry creation and image push
+  - Add `createContainerRegistry(ctx context.Context, mgCfg *MGConfig) error` to `YandexCloudClient`
+  - Use `sdk.ContainerRegistry().Registry().Create()` with `FolderId` from `mgCfg.Cloud.YCFolderID`
+  - Registry name derived from `mgCfg.Name` (e.g. `"polar-gosling-yandex-test"`)
+  - Skip creation if registry with same name already exists (idempotent — list by name before creating)
+  - After registry creation, build and push Docker images for MotherGoose and UglyFox:
+    - Build MotherGoose image from `Dockerfile.mg` in `Polar-Gosling-Backends/` root
+    - Build UglyFox image from `Dockerfile.uf` in `Polar-Gosling-Backends/` root
+    - Tag images as `cr.yandex/{registry_id}/mothergoose:{version}` and `cr.yandex/{registry_id}/uglyfox:{version}`
+    - Push images using Docker CLI (`docker push`) or Yandex Cloud Container Registry API
+  - Store registry ID and image URIs on `YandexCloudClient` for use by container deployment steps (40.6, 40.7)
+  - Image URIs are passed to `mgCfg.FastAPIApp.Image`, `mgCfg.CeleryWorkers.Image`, and `ufCfg.Workers.Image` if not already set
+  - _Requirements: 1.13, 1.14, 1.15, 9.1_
+
+- [ ] 40.6 Implement Serverless Container deployment (MotherGoose API + Celery workers)
+  - Add `createMGContainers(ctx context.Context, mgCfg *MGConfig) error` to `YandexCloudClient`
+  - Use `sdk.Serverless().Containers().Create()` for MotherGoose FastAPI app and Celery workers from `mgCfg`
+  - Set image URI from registry (created in 40.5), memory, timeout, concurrency, environment variables, service account ID from config
+  - Deploy a new revision via `sdk.Serverless().Containers().DeployRevision()` after container creation
+  - Wait for each container revision to reach `ACTIVE` state
+  - Store MotherGoose container URL on `YandexCloudClient` for API Gateway step
+  - _Requirements: 1.13, 1.14, 9.1_
+
+- [ ] 40.7 Implement Serverless Container deployment (UglyFox workers)
+  - Add `createUFContainers(ctx context.Context, ufCfg *UFConfig) error` to `YandexCloudClient`
+  - Use `sdk.Serverless().Containers().Create()` for UglyFox workers from `ufCfg.Workers`
+  - Set image URI from registry (created in 40.5), memory, timeout, concurrency, environment variables, service account ID from `ufCfg`
+  - Deploy a new revision and wait for `ACTIVE` state
+  - _Requirements: 1.15, 9.1_
+
+- [ ] 40.8 Implement API Gateway creation
+  - Add `createAPIGateway(ctx context.Context, mgCfg *MGConfig) error` to `YandexCloudClient`
+  - Use `sdk.Serverless().APIGateway().Create()` with generated OpenAPI spec
+  - OpenAPI spec must route `POST /webhooks/gitlab` and `POST /internal/*` to MotherGoose container URL
+  - Configure CORS from `mgCfg.APIGateway.CORS`
+  - Print API Gateway URL after creation
+  - _Requirements: 1.12, 9.1_
+
+- [ ] 40.9 Implement Yandex Cloud Timer Trigger creation
+  - Add `createTimerTriggers(ctx context.Context, mgCfg *MGConfig) error` to `YandexCloudClient`
+  - Use `sdk.Serverless().Triggers().Create()` for each entry in `mgCfg.Triggers`
+  - Trigger type: `TriggerType_TIMER` with cron expression from `mgCfg.Triggers[*].Schedule`
+  - Action: invoke serverless container (MotherGoose container ID) at `mgCfg.Triggers[*].Endpoint`
+  - Create git-sync trigger (`*/5 * * * *` → `POST /internal/sync-git`)
+  - Create health-check trigger (`*/10 * * * *` → `POST /internal/uglyfox/health-check`)
+  - Skip creation if trigger with same name already exists (idempotent)
+  - _Requirements: 1.17, 4.7, 13.7_
+
+- [ ] 40.10 Trigger initial Git sync after bootstrap completes
+  - After all resources are created, call `POST /internal/sync-git` on the API Gateway URL
+  - Print the API Gateway URL and instruct user to configure GitLab webhooks pointing to it
+  - _Requirements: 4.1, 4.2_
+
+- [ ] 40.11 Write property test for deploy idempotency
+  - **Property 49: Deploy Idempotency** — calling `DeployBackendInfrastructure` twice with the same `MGConfig`/`UFConfig` produces no duplicate resources (all create calls are guarded by existence checks)
+  - Use mock Yandex Cloud SDK responses that simulate "already exists" errors on second call
+  - Include container registry idempotency: second call finds existing registry by name and reuses it
+  - _Requirements: 3.9, 9.1_
+
 ## Notes
 
 - Tasks marked with `*` are optional test tasks and can be skipped for faster MVP

@@ -199,6 +199,17 @@ ARCHITECTURE_OVERVIEW: dict[str, Any] = {
                 "Rift server entrypoint on Rift VMs (rift serve — separate binary, shared internal/rift/ package)",
             ],
             "repo": "Polar-Gosling",
+            "packages": {
+                "internal/cli": "Command implementations (init, add, validate, deploy, rollback, parse, status, runner, rift)",
+                "internal/parser": ".fly file parser and AST",
+                "internal/mothergoose": "MotherGoose API client",
+                "internal/deployer": "Cloud SDK integrations (Yandex Cloud + AWS), .fly-to-SDK converter",
+                "internal/runner": "GitLab Runner Agent manager, metrics collector, tag router",
+                "internal/gitlab": "GitLab Go SDK integration",
+                "internal/rift": "Rift server implementation (Docker proxy, image cache)",
+                "cmd/gosling": "Gosling CLI binary entry point",
+                "cmd/rift": "Rift server binary entry point",
+            },
         },
         "ComputeModule": {
             "type": "OpenTofu/Terraform module",

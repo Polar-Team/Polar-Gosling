@@ -128,11 +128,16 @@ scripts/
 
 ```
 internal/
-  cli/         # Command implementations: init, add, validate, deploy, rollback, parse, status
+  cli/         # Command implementations: init, add, validate, deploy, rollback, parse, status, runner, rift
   parser/      # .fly file parser and AST
   mothergoose/ # MotherGoose API client
-  cloud/       # Yandex Cloud + AWS SDK integrations
+  deployer/    # Cloud SDK integrations (Yandex Cloud + AWS), .fly-to-SDK converter
+  runner/      # GitLab Runner Agent manager, metrics collector, tag router
   gitlab/      # GitLab Go SDK integration
+  rift/        # Rift server implementation (Docker proxy, image cache)
+cmd/
+  gosling/     # Gosling CLI binary entry point
+  rift/        # Rift server binary entry point
 main.go
 ```
 

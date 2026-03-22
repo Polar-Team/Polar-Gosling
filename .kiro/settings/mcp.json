@@ -30,7 +30,21 @@
         "get_architecture_overview",
         "get_steering_product",
         "get_steering_structure",
-        "get_steering_tech"
+        "get_steering_tech",
+        "get_yc_grpc_overview",
+        "get_yc_services_index",
+        "get_yc_api_gateway",
+        "get_yc_object_storage",
+        "get_yc_ydb",
+        "get_yc_serverless_containers",
+        "get_yc_compute",
+        "get_yc_lockbox",
+        "get_yc_vpc",
+        "get_yc_iam",
+        "get_yc_container_registry",
+        "get_yc_resource_manager",
+        "get_yc_triggers",
+        "get_yc_message_queue"
       ]
     }
   }

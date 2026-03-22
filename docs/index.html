@@ -357,6 +357,7 @@
     <a href="#fly-eggsbucket">eggsbucket block</a>
     <a href="#fly-job">job block</a>
     <a href="#fly-uglyfox">uglyfox block</a>
+    <a href="#fly-mothergoose">mothergoose block</a>
     <a href="#fly-secrets">Secret URIs</a>
     <a href="#fly-types">Type System</a>
   </div>
@@ -396,6 +397,7 @@
       <a href="#fly-eggsbucket">eggsbucket block</a>
       <a href="#fly-job">job block</a>
       <a href="#fly-uglyfox">uglyfox block</a>
+      <a href="#fly-mothergoose">mothergoose block</a>
       <a href="#fly-secrets">Secret URIs</a>
       <a href="#fly-types">Type System</a>
     </div>
@@ -946,6 +948,117 @@ gosling status --all --api-url https://mg.example.com --api-key $MG_API_KEY</cod
         <tr><td><code>demote_to_nadir</code></td><td>Move runner from Apex to Nadir (dormant) pool</td></tr>
         <tr><td><code>promote_to_apex</code></td><td>Move runner from Nadir to Apex (active) pool</td></tr>
       </table>
+    </section>
+
+    <!-- MOTHERGOOSE BLOCK -->
+    <section class="section" id="fly-mothergoose">
+      <h3>mothergoose block</h3>
+      <p>Defines the MotherGoose backend infrastructure: API Gateway, serverless containers, message queues, cloud triggers, database, and storage. Lives in <code>MG/*.fly</code>. A single file can contain multiple <code>mothergoose</code> blocks, each identified by a label (instance name).</p>
+      <pre><code><span class="kw">mothergoose</span> <span class="label">"yandex-prod"</span> {
+  <span class="kw">cloud</span> {
+    <span class="attr">provider</span>    = <span class="str">"yandex"</span>
+    <span class="attr">yc_folder_id</span> = <span class="str">"b1g..."</span>
+    <span class="attr">yc_cloud_id</span>  = <span class="str">"b1g..."</span>
+  }
+
+  <span class="kw">api_gateway</span> {
+    <span class="attr">name</span>            = <span class="str">"polar-gosling-gw"</span>
+    <span class="attr">description</span>     = <span class="str">"MotherGoose API Gateway"</span>
+    <span class="attr">spec_path</span>       = <span class="str">"openapi.yaml"</span>
+    <span class="attr">service_account</span> = <span class="str">"mg-gateway-sa"</span>
+  }
+
+  <span class="kw">fastapi_app</span> {
+    <span class="attr">name</span>              = <span class="str">"mothergoose-api"</span>
+    <span class="attr">image</span>             = <span class="str">"cr.yandex/xxx/mothergoose:latest"</span>
+    <span class="attr">memory</span>            = <span class="num">512</span>
+    <span class="attr">cores</span>             = <span class="num">1</span>
+    <span class="attr">core_fraction</span>     = <span class="num">100</span>
+    <span class="attr">execution_timeout</span> = <span class="str">"300s"</span>
+    <span class="attr">concurrency</span>       = <span class="num">4</span>
+    <span class="attr">service_account</span>   = <span class="str">"mg-api-sa"</span>
+
+    <span class="kw">environment</span> {
+      <span class="attr">MOTHERGOOSE_DB_ENDPOINT</span> = <span class="str">"grpcs://ydb.serverless.yandexcloud.net:2135"</span>
+    }
+  }
+
+  <span class="kw">celery_workers</span> {
+    <span class="attr">name</span>              = <span class="str">"mothergoose-worker"</span>
+    <span class="attr">image</span>             = <span class="str">"cr.yandex/xxx/mothergoose:latest"</span>
+    <span class="attr">memory</span>            = <span class="num">1024</span>
+    <span class="attr">cores</span>             = <span class="num">2</span>
+    <span class="attr">execution_timeout</span> = <span class="str">"600s"</span>
+    <span class="attr">concurrency</span>       = <span class="num">2</span>
+    <span class="attr">service_account</span>   = <span class="str">"mg-worker-sa"</span>
+  }
+
+  <span class="kw">message_queue</span> {
+    <span class="attr">name</span>               = <span class="str">"mg-tasks"</span>
+    <span class="attr">visibility_timeout</span> = <span class="num">300</span>
+    <span class="attr">message_retention</span>  = <span class="num">86400</span>
+    <span class="attr">max_message_size</span>   = <span class="num">262144</span>
+    <span class="attr">receive_wait_time</span>  = <span class="num">20</span>
+  }
+
+  <span class="kw">trigger</span> {
+    <span class="attr">name</span>            = <span class="str">"git-sync"</span>
+    <span class="attr">schedule</span>        = <span class="str">"*/5 * * * *"</span>
+    <span class="attr">endpoint</span>        = <span class="str">"/internal/sync-git"</span>
+    <span class="attr">method</span>          = <span class="str">"POST"</span>
+    <span class="attr">service_account</span> = <span class="str">"mg-trigger-sa"</span>
+  }
+
+  <span class="kw">database</span> {
+    <span class="attr">name</span>            = <span class="str">"polar-gosling-db"</span>
+    <span class="attr">type</span>            = <span class="str">"ydb"</span>
+    <span class="attr">serverless_mode</span> = <span class="bool">true</span>
+  }
+
+  <span class="kw">storage</span> {
+    <span class="attr">bucket_name</span> = <span class="str">"polar-gosling-state"</span>
+    <span class="attr">region</span>      = <span class="str">"ru-central1"</span>
+  }
+
+  <span class="kw">service_account</span> {
+    <span class="attr">name</span>        = <span class="str">"mg-main-sa"</span>
+    <span class="attr">description</span> = <span class="str">"MotherGoose main service account"</span>
+    <span class="attr">roles</span>       = [
+      <span class="str">"serverless.containers.invoker"</span>,
+      <span class="str">"ydb.editor"</span>,
+      <span class="str">"lockbox.payloadViewer"</span>,
+    ]
+  }
+}</code></pre>
+
+      <h4>mothergoose — cloud block</h4>
+      <table>
+        <tr><th>Attribute</th><th>Type</th><th>Description</th></tr>
+        <tr><td><code>provider</code></td><td>string</td><td><code>"yandex"</code> or <code>"aws"</code> <span class="flag-required">required</span></td></tr>
+        <tr><td><code>yc_folder_id</code></td><td>string</td><td>Yandex Cloud folder ID (required when <code>provider = "yandex"</code>)</td></tr>
+        <tr><td><code>yc_cloud_id</code></td><td>string</td><td>Yandex Cloud cloud ID (required when <code>provider = "yandex"</code>)</td></tr>
+        <tr><td><code>aws_region</code></td><td>string</td><td>AWS region (required when <code>provider = "aws"</code>)</td></tr>
+        <tr><td><code>aws_account_id</code></td><td>string</td><td>AWS account ID <span class="flag-optional">optional</span></td></tr>
+      </table>
+
+      <h4>mothergoose — nested blocks</h4>
+      <table>
+        <tr><th>Block</th><th>Repeat</th><th>Description</th></tr>
+        <tr><td><code>cloud</code></td><td>once</td><td>Cloud provider settings <span class="flag-required">required</span></td></tr>
+        <tr><td><code>api_gateway</code></td><td>once</td><td>API Gateway configuration (name, spec path, service account)</td></tr>
+        <tr><td><code>fastapi_app</code></td><td>once</td><td>MotherGoose FastAPI serverless container (image, memory, cores, timeout, concurrency)</td></tr>
+        <tr><td><code>celery_workers</code></td><td>once</td><td>Celery worker serverless container</td></tr>
+        <tr><td><code>message_queue</code></td><td>multiple</td><td>SQS/YMQ queue (visibility timeout, retention, max size)</td></tr>
+        <tr><td><code>trigger</code></td><td>multiple</td><td>Cloud timer trigger (cron schedule, endpoint, method)</td></tr>
+        <tr><td><code>database</code></td><td>once</td><td>YDB/DynamoDB database (name, type, serverless mode)</td></tr>
+        <tr><td><code>storage</code></td><td>once</td><td>S3-compatible object storage bucket</td></tr>
+        <tr><td><code>service_account</code></td><td>multiple</td><td>IAM service accounts with role bindings</td></tr>
+      </table>
+
+      <div class="callout callout-info">
+        <strong>ℹ️ UglyFox inherits cloud settings</strong>
+        The <code>uglyfox</code> block in <code>UF/config.fly</code> references a <code>mothergoose</code> instance by name via <code>mothergoose = "yandex-prod"</code>. Cloud provider settings are resolved from the referenced MotherGoose instance at parse time — UglyFox does not have its own <code>cloud</code> block.
+      </div>
     </section>
 
     <!-- SECRET URIS -->

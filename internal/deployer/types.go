@@ -124,7 +124,7 @@ type Container struct {
 // Note: Individual runner deployment is handled by MotherGoose using OpenTofu, not by Gosling CLI
 type CloudDeployer interface {
 	// DeployBackendInfrastructure deploys MotherGoose, UglyFox, databases, and storage
-	DeployBackendInfrastructure(ctx context.Context) error
+	DeployBackendInfrastructure(ctx context.Context, mgCfg *MGConfig, ufCfg *UFConfig) error
 
 	// GetStatus retrieves the current status of infrastructure
 	GetStatus(ctx context.Context, resourceID string) (string, error)

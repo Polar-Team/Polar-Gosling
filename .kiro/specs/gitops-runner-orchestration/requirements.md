@@ -25,6 +25,8 @@ The Polar Gosling GitOps Runner Orchestration system is a comprehensive platform
 - **GitLab_Server**: The FQDN of a GitLab instance (e.g., gitlab.com, gitlab.company.com)
 - **Project_Level_Runner**: A runner registered to a specific GitLab project
 - **Group_Level_Runner**: A runner registered to a GitLab group, available to all projects in that group
+- **Storage_Bucket**: A single S3-compatible object storage bucket used by the system for all storage needs, organized by folder prefixes
+- **Folder_Prefix**: A logical directory path within the Storage_Bucket that separates different categories of stored objects (e.g., binaries/, states/, plugin-cache/, runners-cache/)
 
 ## Requirements
 
@@ -52,6 +54,7 @@ The Polar Gosling GitOps Runner Orchestration system is a comprehensive platform
 16. THE MG_Config SHALL define message queue configuration (YMQ for Yandex Cloud, SQS for AWS)
 17. THE MG_Config SHALL define cloud trigger configuration (Timer Triggers for Yandex Cloud, EventBridge for AWS)
 18. THE MG_Config SHALL define authentication function configuration for API Gateway endpoints
+19. THE MG_Config SHALL define a single storage block with one S3 bucket and folder prefix configuration
 
 ### Requirement 2: Fly Language Parser and Interpreter
 
@@ -408,37 +411,37 @@ The Polar Gosling GitOps Runner Orchestration system is a comprehensive platform
 
 #### Acceptance Criteria
 
-1. THE System SHALL store Gosling CLI binaries in S3 buckets with version-based paths (e.g., `/gosling/{version}/gosling`)
-2. THE System SHALL store OpenTofu binaries in S3 buckets with version-based paths (e.g., `/tofu/{version}/tofu`)
+1. THE System SHALL store Gosling CLI binaries in the Storage_Bucket under the `binaries/gosling/{version}/` Folder_Prefix
+2. THE System SHALL store OpenTofu binaries in the Storage_Bucket under the `binaries/tofu/{version}/` Folder_Prefix
 3. THE System SHALL maintain a binary_versions table in the database tracking available versions for both Gosling CLI and OpenTofu
 4. THE binary_versions table SHALL store: binary_name, version, s3_path, sha256_checksum, is_active, uploaded_at, activated_at
-5. WHEN MotherGoose starts, THE System SHALL mount the S3 bucket containing binaries using s3fs at /mnt/s3-binaries
+5. WHEN MotherGoose starts, THE System SHALL mount the Storage_Bucket using s3fs at /mnt/s3-storage
 6. WHEN MotherGoose starts, THE System SHALL verify the active Gosling CLI binary checksum against the database record
-7. THE fly_parser service SHALL use the Gosling CLI binary directly from the mounted S3 filesystem
-8. THE System SHALL support multiple concurrent versions of Gosling CLI and OpenTofu in S3
+7. THE fly_parser service SHALL use the Gosling CLI binary directly from the mounted Storage_Bucket filesystem
+8. THE System SHALL support multiple concurrent versions of Gosling CLI and OpenTofu in the Storage_Bucket
 9. THE System SHALL mark only one version as "active" per binary at any time
-10. WHEN a new Gosling CLI version is uploaded, THE System SHALL write it directly to the mounted S3 filesystem but NOT activate it automatically
-11. WHEN a new OpenTofu version is uploaded, THE System SHALL write it directly to the mounted S3 filesystem but NOT activate it automatically
+10. WHEN a new Gosling CLI version is uploaded, THE System SHALL write it to the `binaries/` Folder_Prefix in the mounted Storage_Bucket but NOT activate it automatically
+11. WHEN a new OpenTofu version is uploaded, THE System SHALL write it to the `binaries/` Folder_Prefix in the mounted Storage_Bucket but NOT activate it automatically
 12. THE System SHALL provide an API endpoint POST /admin/binaries/{binary_name}/activate to activate a specific version
 13. WHEN activating a new binary version, THE System SHALL deactivate the previous active version
-14. WHEN activating a new Gosling CLI version, THE System SHALL update the symlink to point to the new version (no restart needed)
+14. WHEN activating a new Gosling CLI version, THE System SHALL update the is_active flag in the binary_versions table (no restart needed)
 15. WHEN activating a new OpenTofu version, THE System SHALL update the tofu_versions table (already implemented)
 16. THE System SHALL support rollback to previous binary versions via the activation API
 17. THE System SHALL log all binary version changes to audit_logs table
 18. THE System SHALL provide an API endpoint GET /admin/binaries to list all available binary versions
 19. THE System SHALL provide an API endpoint POST /admin/binaries/upload to upload new binary versions with checksums
-20. WHEN uploading a new binary, THE System SHALL validate the checksum before storing in the mounted S3 filesystem
-21. THE System SHALL support uploading Gosling CLI binaries from GitHub releases automatically to S3
-22. THE System SHALL support uploading OpenTofu binaries from GitHub releases automatically to S3 (already implemented)
+20. WHEN uploading a new binary, THE System SHALL validate the checksum before storing in the Storage_Bucket
+21. THE System SHALL support uploading Gosling CLI binaries from GitHub releases automatically to the Storage_Bucket
+22. THE System SHALL support uploading OpenTofu binaries from GitHub releases automatically to the Storage_Bucket (already implemented)
 23. THE System SHALL check for new binary versions on GitHub periodically (configurable interval, default: daily)
 24. THE System SHALL send notifications when new binary versions are available but not yet activated
 25. THE Egg configuration SHALL optionally specify required Gosling CLI version for parsing
 26. THE Egg configuration SHALL optionally specify required OpenTofu version for deployment
-27. WHEN an Egg specifies a required binary version, THE System SHALL use that version from the mounted S3 filesystem
-28. WHEN an Egg does not specify a binary version, THE System SHALL use the active version (via symlink)
-29. THE System SHALL fail deployment if the required binary version is not available in the mounted S3 filesystem
-30. THE System SHALL use symlinks to manage active binary versions (e.g., /mnt/s3-binaries/gosling/active → /mnt/s3-binaries/gosling/{version}/gosling)
-31. THE System SHALL configure s3fs with appropriate caching and performance options for binary access
+27. WHEN an Egg specifies a required binary version, THE System SHALL use that version from the Storage_Bucket
+28. WHEN an Egg does not specify a binary version, THE System SHALL use the active version as determined by the binary_versions table
+29. THE System SHALL fail deployment if the required binary version is not available in the Storage_Bucket
+30. THE System SHALL resolve the active binary version from the binary_versions table and construct the filesystem path (e.g., /mnt/s3-storage/binaries/gosling/{version}/gosling) at runtime
+31. THE System SHALL configure s3fs with appropriate caching and performance options for Storage_Bucket access
 32. THE System SHALL handle s3fs mount failures gracefully with retry logic and fallback mechanisms
 
 
@@ -487,3 +490,44 @@ The Polar Gosling GitOps Runner Orchestration system is a comprehensive platform
 
 27. FOR ALL valid Fly_Files, formatting the Canonical Form output SHALL produce output identical to the input (idempotence: `fmt(fmt(x)) == fmt(x)`).
 28. FOR ALL valid Fly_Files, THE Pretty_Printer SHALL produce output that, when re-parsed, yields an AST semantically equivalent to the original (round-trip correctness).
+
+### Requirement 25: Unified Single-Bucket Storage Model
+
+**User Story:** As a platform operator, I want all system storage consolidated into a single S3 bucket with folder prefixes, so that infrastructure is simpler to manage, costs are lower, and IAM policies are easier to maintain.
+
+#### Acceptance Criteria
+
+**MG Config Storage Block:**
+
+1. THE MG_Config storage block SHALL define exactly one S3 bucket with a `name` attribute and a `region` attribute
+2. THE MG_Config storage block SHALL NOT define multiple sub-buckets (state_bucket, binary_bucket, or similar)
+3. THE StorageConfig struct in the Gosling_CLI SHALL parse the single-bucket storage block with bucket name and region
+
+**Folder Prefix Structure:**
+
+4. THE Storage_Bucket SHALL use the static `binaries/` Folder_Prefix for Gosling CLI and OpenTofu binary storage
+5. THE Storage_Bucket SHALL use the static `states/` Folder_Prefix for OpenTofu state files
+6. THE Storage_Bucket SHALL use the static `plugin-cache/` Folder_Prefix for OpenTofu provider plugin cache
+7. THE Storage_Bucket SHALL use the static `runners-cache/` Folder_Prefix for runner artifact cache
+8. THE four Folder_Prefixes (binaries/, states/, plugin-cache/, runners-cache/) SHALL be hardcoded constants, NOT configurable via .fly files
+
+**Versioning:**
+
+9. THE Storage_Bucket SHALL NOT require S3 object versioning (OpenTofu plans are stored in the database, binaries are version-managed by path, and cache data is ephemeral)
+
+**Gosling CLI Init Template:**
+
+10. WHEN initializing a new Nest repository, THE Gosling_CLI `init` command SHALL generate a storage block with a single bucket name and region
+11. THE generated storage block SHALL NOT include prefix or versioning configuration (prefixes are static implementation details)
+
+**Parser and Config Struct Alignment:**
+
+12. THE StorageConfig struct SHALL contain a BucketName field and a Region field
+13. THE parseStorageBlock function SHALL parse the single-bucket storage block and populate BucketName and Region
+14. IF the storage block contains legacy sub-bucket definitions (state_bucket, binary_bucket), THEN THE Fly_Parser SHALL return a descriptive migration error
+
+**S3 Filesystem Mounting:**
+
+15. WHEN MotherGoose mounts the Storage_Bucket via s3fs, THE mount point SHALL be /mnt/s3-storage (replacing /mnt/s3-binaries)
+16. THE System SHALL access binaries at /mnt/s3-storage/binaries/, states at /mnt/s3-storage/states/, plugin cache at /mnt/s3-storage/plugin-cache/, and runner cache at /mnt/s3-storage/runners-cache/
+

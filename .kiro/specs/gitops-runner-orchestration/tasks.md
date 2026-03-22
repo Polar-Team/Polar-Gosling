@@ -353,16 +353,15 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
 
 - [x] 12.5 MotherGoose Backend - Gosling CLI Binary Lifecycle Management with s3fs
   - Create GoslingBinaryManager in app/services/gosling_binary_manager.py
-  - Implement mount_s3_binaries() method (called on MotherGoose startup, mounts S3 bucket using s3fs)
-  - Configure s3fs mount point at /mnt/s3-binaries with read-only access
-  - Implement get_active_binary_path() method (returns path to active binary on mounted S3 filesystem)
-  - Implement verify_and_activate(version: str) method (updates symlink to active version)
-  - Create symlink /mnt/s3-binaries/gosling/active → /mnt/s3-binaries/gosling/{version}/gosling
-  - Update GOSLING_CLI_PATH to point to symlink (/mnt/s3-binaries/gosling/active)
+  - Implement mount_s3_binaries() method (called on MotherGoose startup, mounts unified S3 bucket using s3fs)
+  - Configure s3fs mount point at /mnt/s3-storage (unified bucket, replaces old /mnt/s3-binaries)
+  - Implement get_active_binary_path() method — queries binary_versions table for active version (is_active=True), constructs path: /mnt/s3-storage/binaries/gosling/{version}/gosling (no symlinks)
+  - Implement verify_and_activate(version: str) method (updates is_active flag in binary_versions table, no symlink management)
+  - Update GOSLING_CLI_PATH to use path resolved from binary_versions table at runtime
   - Add startup hook in main.py to mount S3 bucket and verify active binary
   - Update fly_parser.py to use GoslingBinaryManager for binary path resolution
-  - Note: No local caching needed, binaries accessed directly from mounted S3 filesystem
-  - _Requirements: 23.1, 23.5, 23.6, 23.7, 23.14, 23.30_
+  - Note: No symlinks — active version resolved from binary_versions table at runtime; no local caching needed, binaries accessed directly from mounted S3 filesystem
+  - _Requirements: 23.1, 23.5, 23.6, 23.7, 23.14, 23.30, 25.15, 25.16_
 
 - [x] 12.6 MotherGoose Backend - GitHub Binary Auto-Upload to S3
   - Create GitHubBinaryUploader in app/services/github_binary_uploader.py
@@ -936,14 +935,14 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Add `--name` flag to select a specific instance to deploy (optional — if omitted, deploy all instances)
   - _Requirements: 1.11, 1.12, 1.13, 1.14, 1.15, 1.16, 1.17, 3.9, 3.11_
 
-- [-] 40. Implement Yandex Cloud Bootstrap Infrastructure (`yandex_client.go`)
+- [x] 40. Implement Yandex Cloud Bootstrap Infrastructure (`yandex_client.go`)
   - Replace stub `DeployBackendInfrastructure` with full implementation driven by `MGConfig` + `UFConfig`
   - Implement each sub-step as a private method; call them in sequence from `DeployBackendInfrastructure`
   - Print progress for each resource using spinner animation.
   - Return first error encountered (fail-fast)
   - _Requirements: 1.11, 1.12, 1.13, 1.14, 1.15, 1.16, 1.17, 3.9, 9.1_
 
-- [ ] 40.1 Implement IAM service account creation
+- [x] 40.1 Implement IAM service account creation
   - Add `createServiceAccounts(ctx context.Context, mgCfg *MGConfig, ufCfg *UFConfig) error` to `YandexCloudClient`
   - Use `sdk.IAM().ServiceAccounts().Create()` with `FolderId` from `mgCfg.Cloud.YCFolderID`
   - Create MotherGoose service accounts from `mgCfg.ServiceAccounts` and UglyFox service account from `ufCfg.ServiceAccount`
@@ -951,7 +950,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Skip creation if service account already exists (idempotent — list by name before creating)
   - _Requirements: 3.9, 9.1_
 
-- [ ] 40.2 Implement YDB serverless database creation
+- [x] 40.2 Implement YDB serverless database creation
   - Add `createYDBDatabase(ctx context.Context, mgCfg *MGConfig) error` to `YandexCloudClient`
   - Use `sdk.YDB().Database().Create()` with `ServerlessDatabase` config from `mgCfg.Database`
   - Wait for database to reach `RUNNING` state (poll every 5s, timeout 5min)
@@ -959,14 +958,14 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Skip creation if database with same name already exists
   - _Requirements: 1.11, 9.1, 14.1_
 
-- [ ] 40.3 Implement Object Storage (S3-compatible) bucket creation
-  - Add `createStorageBuckets(ctx context.Context, mgCfg *MGConfig) error` to `YandexCloudClient`
-  - Use AWS SDK v2 with Yandex Cloud S3-compatible endpoint (`storage.yandexcloud.net`) to create buckets from `mgCfg.Storage`
-  - Enable versioning on state bucket (`mgCfg.Storage.StateBucket.Versioning = true`)
+- [x] 40.3 Implement Object Storage (S3-compatible) single bucket creation
+  - Add `createStorageBucket(ctx context.Context, mgCfg *MGConfig) error` to `YandexCloudClient`
+  - Use AWS SDK v2 with Yandex Cloud S3-compatible endpoint (`storage.yandexcloud.net`) to create a single bucket from `mgCfg.Storage.BucketName`
+  - No S3 object versioning needed (plans stored in DB, binaries path-versioned, cache is ephemeral)
   - Skip creation if bucket already exists (idempotent)
-  - _Requirements: 1.11, 9.1_
+  - _Requirements: 1.11, 9.1, 25.1, 25.9_
 
-- [ ] 40.4 Implement YMQ message queue creation
+- [x] 40.4 Implement YMQ message queue creation
   - Add `createMessageQueues(ctx context.Context, mgCfg *MGConfig) error` to `YandexCloudClient`
   - Use AWS SDK v2 SQS client with Yandex Cloud YMQ endpoint (`message-queue.api.cloud.yandex.net`) to create queues from `mgCfg.MessageQueues`
   - Create dead-letter queues first, then main queues with `RedrivePolicy` referencing DLQ ARN
@@ -974,7 +973,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Skip creation if queue already exists (idempotent)
   - _Requirements: 1.16, 9.1_
 
-- [ ] 40.5 Implement Yandex Container Registry creation and image push
+- [x] 40.5 Implement Yandex Container Registry creation and image push
   - Add `createContainerRegistry(ctx context.Context, mgCfg *MGConfig) error` to `YandexCloudClient`
   - Use `sdk.ContainerRegistry().Registry().Create()` with `FolderId` from `mgCfg.Cloud.YCFolderID`
   - Registry name derived from `mgCfg.Name` (e.g. `"polar-gosling-yandex-test"`)
@@ -988,7 +987,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Image URIs are passed to `mgCfg.FastAPIApp.Image`, `mgCfg.CeleryWorkers.Image`, and `ufCfg.Workers.Image` if not already set
   - _Requirements: 1.13, 1.14, 1.15, 9.1_
 
-- [ ] 40.6 Implement Serverless Container deployment (MotherGoose API + Celery workers)
+- [x] 40.6 Implement Serverless Container deployment (MotherGoose API + Celery workers)
   - Add `createMGContainers(ctx context.Context, mgCfg *MGConfig) error` to `YandexCloudClient`
   - Use `sdk.Serverless().Containers().Create()` for MotherGoose FastAPI app and Celery workers from `mgCfg`
   - Set image URI from registry (created in 40.5), memory, timeout, concurrency, environment variables, service account ID from config
@@ -997,14 +996,14 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Store MotherGoose container URL on `YandexCloudClient` for API Gateway step
   - _Requirements: 1.13, 1.14, 9.1_
 
-- [ ] 40.7 Implement Serverless Container deployment (UglyFox workers)
+- [x] 40.7 Implement Serverless Container deployment (UglyFox workers)
   - Add `createUFContainers(ctx context.Context, ufCfg *UFConfig) error` to `YandexCloudClient`
   - Use `sdk.Serverless().Containers().Create()` for UglyFox workers from `ufCfg.Workers`
   - Set image URI from registry (created in 40.5), memory, timeout, concurrency, environment variables, service account ID from `ufCfg`
   - Deploy a new revision and wait for `ACTIVE` state
   - _Requirements: 1.15, 9.1_
 
-- [ ] 40.8 Implement API Gateway creation
+- [x] 40.8 Implement API Gateway creation
   - Add `createAPIGateway(ctx context.Context, mgCfg *MGConfig) error` to `YandexCloudClient`
   - Use `sdk.Serverless().APIGateway().Create()` with generated OpenAPI spec
   - OpenAPI spec must route `POST /webhooks/gitlab` and `POST /internal/*` to MotherGoose container URL
@@ -1012,7 +1011,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Print API Gateway URL after creation
   - _Requirements: 1.12, 9.1_
 
-- [ ] 40.9 Implement Yandex Cloud Timer Trigger creation
+- [x] 40.9 Implement Yandex Cloud Timer Trigger creation
   - Add `createTimerTriggers(ctx context.Context, mgCfg *MGConfig) error` to `YandexCloudClient`
   - Use `sdk.Serverless().Triggers().Create()` for each entry in `mgCfg.Triggers`
   - Trigger type: `TriggerType_TIMER` with cron expression from `mgCfg.Triggers[*].Schedule`
@@ -1022,16 +1021,92 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Skip creation if trigger with same name already exists (idempotent)
   - _Requirements: 1.17, 4.7, 13.7_
 
-- [ ] 40.10 Trigger initial Git sync after bootstrap completes
+- [x] 40.10 Trigger initial Git sync after bootstrap completes
   - After all resources are created, call `POST /internal/sync-git` on the API Gateway URL
   - Print the API Gateway URL and instruct user to configure GitLab webhooks pointing to it
   - _Requirements: 4.1, 4.2_
 
-- [ ] 40.11 Write property test for deploy idempotency
+- [x] 40.11 Write property test for deploy idempotency
   - **Property 49: Deploy Idempotency** — calling `DeployBackendInfrastructure` twice with the same `MGConfig`/`UFConfig` produces no duplicate resources (all create calls are guarded by existence checks)
   - Use mock Yandex Cloud SDK responses that simulate "already exists" errors on second call
   - Include container registry idempotency: second call finds existing registry by name and reuses it
   - _Requirements: 3.9, 9.1_
+
+## Unified Single-Bucket Storage Model (Requirement 25)
+
+- [ ] 41. Update Gosling CLI init template for unified storage block
+  - Update `defaultMotherGooseConfig()` in `internal/cli/init.go` to generate single-bucket storage block
+  - Replace old 2-bucket format (state_bucket/binary_bucket sub-blocks) with unified format:
+    ```
+    storage {
+      bucket_name = "polar-gosling-storage"
+      region      = "ru-central1"
+    }
+    ```
+  - Remove `versioning` attributes (not needed — plans in DB, binaries path-versioned, cache ephemeral)
+  - Verify `gosling init` generates valid MG/config.fly that parses without errors
+  - _Requirements: 25.10, 25.11_
+
+- [ ] 42. Add legacy sub-bucket migration error to parseStorageBlock
+  - Update `parseStorageBlock()` in `internal/deployer/mg_config.go`
+  - Detect legacy sub-bucket nested blocks (`state_bucket`, `binary_bucket`) inside the storage block
+  - When legacy sub-blocks are detected, return a descriptive migration error message explaining the new single-bucket format
+  - The error message should include an example of the correct format with `bucket_name` and `region`
+  - Note: `parseStorageBlock()` already parses the new single-bucket format (BucketName + Region) — only the legacy detection needs to be added
+  - _Requirements: 25.14_
+
+- [ ] 43. Add static folder prefix constants
+  - [ ] 43.1 Add Go constants in Polar-Gosling codebase
+    - Create or update a constants file (e.g., `internal/deployer/storage_constants.go`)
+    - Define constants: `StoragePrefixBinaries = "binaries/"`, `StoragePrefixStates = "states/"`, `StoragePrefixPluginCache = "plugin-cache/"`, `StoragePrefixRunnersCache = "runners-cache/"`
+    - These are static hardcoded values, NOT configurable
+    - _Requirements: 25.4, 25.5, 25.6, 25.7, 25.8_
+  - [ ] 43.2 Add Python constants in Polar-Gosling-Backends codebase
+    - Create or update a constants module (e.g., `mothergoose/src/app/core/storage_constants.py`)
+    - Define constants: `STORAGE_PREFIX_BINARIES = "binaries/"`, `STORAGE_PREFIX_STATES = "states/"`, `STORAGE_PREFIX_PLUGIN_CACHE = "plugin-cache/"`, `STORAGE_PREFIX_RUNNERS_CACHE = "runners-cache/"`
+    - Update any existing code that hardcodes these paths to use the constants
+    - _Requirements: 25.4, 25.5, 25.6, 25.7, 25.8_
+
+- [ ] 44. Update init template tests and parse integration tests
+  - [ ] 44.1 Update mg_config_test.go for single-bucket storage format
+    - Update test fixtures that reference old 2-bucket storage format (state_bucket, binary_bucket)
+    - Replace with single-bucket format using `bucket_name` and `region` attributes
+    - Add test case for legacy sub-bucket detection (expect migration error)
+    - _Requirements: 25.12, 25.13, 25.14_
+  - [ ] 44.2 Update parse_integration_test.go for single-bucket storage format
+    - Update integration test .fly fixtures that reference old bucket names
+    - Replace with single-bucket storage block format
+    - Verify end-to-end parsing produces correct StorageConfig with BucketName and Region
+    - _Requirements: 25.12, 25.13_
+
+- [ ] 45. Checkpoint - Unified storage model
+  - Ensure all Go tests pass (`go test ./...` in Polar-Gosling)
+  - Ensure init template generates valid single-bucket config
+  - Ensure legacy sub-bucket format produces descriptive migration error
+  - Ensure static prefix constants are consistent between Go and Python
+  - Ask the user if questions arise
+
+- [ ]* 46. Write property tests for unified storage model
+  - [ ]* 46.1 Write property test for storage config round-trip
+    - **Property 49: Storage Config Round-Trip**
+    - For any valid StorageConfig with bucket name and region, serializing to .fly and parsing back produces equivalent StorageConfig
+    - **Validates: Requirements 25.1, 25.3, 25.12, 25.13**
+  - [ ]* 46.2 Write property test for legacy storage block rejection
+    - **Property 50: Legacy Storage Block Rejection**
+    - For any storage block containing legacy sub-bucket definitions, parser returns descriptive migration error
+    - **Validates: Requirements 25.2, 25.14**
+  - [ ]* 46.3 Write property test for static folder prefix immutability
+    - **Property 51: Static Folder Prefix Immutability**
+    - For any StorageConfig, folder prefixes are always the hardcoded constants regardless of configuration content
+    - **Validates: Requirements 25.4, 25.5, 25.6, 25.7, 25.8, 25.16**
+  - [ ]* 46.4 Write property test for init single-bucket generation
+    - **Property 52: Init Generates Single-Bucket Storage**
+    - For any invocation of `gosling init`, generated storage block parses to valid single-bucket StorageConfig with only BucketName and Region
+    - **Validates: Requirements 25.10, 25.11, 1.19**
+  - [ ]* 46.5 Write property test for DB-based active version path resolution
+    - **Property 53: DB-Based Active Version Path Resolution**
+    - For any binary name and active version record, resolved path is `/mnt/s3-storage/binaries/{binary_name}/{version}/{binary_name}`
+    - **Validates: Requirements 23.30, 25.15, 25.16**
 
 ## Notes
 

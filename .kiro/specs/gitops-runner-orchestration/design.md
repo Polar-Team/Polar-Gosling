@@ -130,9 +130,9 @@ graph TB
 - **Event-Driven Processing**: Celery task queue enables asynchronous, scalable job processing triggered by webhooks and scheduled events
 - **API Gateway**: All backend access goes through API Gateway (Yandex Cloud API Gateway / AWS API Gateway) with OpenAPI specifications and function-level authentication
 - **Database as Cache**: Database caches parsed .fly configurations from Git for fast runtime access; Git remains authoritative
-- **State Management**: OpenTofu states stored exclusively in S3 buckets with state locking via DynamoDB/YDB
+- **State Management**: OpenTofu states stored in the single S3 bucket under `states/` prefix with state locking via DynamoDB/YDB
 - **Deployment Plans**: Binary deployment plans stored in DynamoDB/YDB for proper rollback without re-planning
-- **Binary Management**: OpenTofu binaries stored in S3 and mounted to runners at `/mnt/tofu/{version}` with version management and checksum verification
+- **Binary Management**: OpenTofu and Gosling CLI binaries stored in a single S3 bucket under `binaries/` prefix, mounted at `/mnt/s3-storage` via s3fs, with version management and checksum verification
 - **Message Queue Scaling**: Celery workers scale automatically based on message queue depth (YMQ for Yandex Cloud / SQS for AWS)
 - **Runner Agent Management**: Gosling CLI runner mode manages GitLab Runner Agent lifecycle, version synchronization with Egg's GitLab server, and health metrics reporting
 - **Metrics-Based Pruning**: UglyFox uses runner health metrics from database to make intelligent pruning decisions
@@ -565,7 +565,7 @@ graph TB
     
     subgraph "Storage"
         YDB[(YDB / DynamoDB<br/><br/>Cached Configs<br/>Runtime State)]
-        S3[S3 Buckets<br/>Tofu States<br/>Tofu Binaries]
+        S3[S3 Bucket<br/>binaries/ states/<br/>plugin-cache/ runners-cache/]
     end
     
     subgraph "Cloud Infrastructure"
@@ -623,10 +623,10 @@ graph TB
     MG --> AWS_EC2
     MG --> AWS_Lambda
     
-    YC_VM -.Mount Tofu.-> S3
-    YC_SC -.Mount Tofu.-> S3
-    AWS_EC2 -.Mount Tofu.-> S3
-    AWS_Lambda -.Mount Tofu.-> S3
+    YC_VM -.Mount S3 Storage.-> S3
+    YC_SC -.Mount S3 Storage.-> S3
+    AWS_EC2 -.Mount S3 Storage.-> S3
+    AWS_Lambda -.Mount S3 Storage.-> S3
     
     YC_VM -.-> Rift[Rift Cache]
     YC_SC -.-> Rift
@@ -709,7 +709,7 @@ sequenceDiagram
     Celery->>DB: Update runner state
     Celery->>S3: Update Tofu state
     
-    Runner->>S3: Mount Tofu binary from /mnt/tofu/{version}
+    Runner->>S3: Mount S3 storage bucket at /mnt/s3-storage
     Runner->>GL: Register & execute job
     Runner->>GL: Report status
     Runner->>DB: Send health metrics
@@ -790,7 +790,7 @@ ADD https://gitlab-runner-downloads.s3.amazonaws.com/latest/binaries/gitlab-runn
 RUN chmod +x /usr/local/bin/gitlab-runner
 
 # Pre-install OpenTofu (mounted from S3 at runtime)
-RUN mkdir -p /mnt/tofu_binary
+RUN mkdir -p /mnt/s3-storage
 
 ENTRYPOINT ["/usr/local/bin/gosling", "runner"]
 ```
@@ -1253,23 +1253,19 @@ mothergoose {
     }
   }
   
-  # S3 Buckets for State and Binaries
+  # S3 Bucket for All Storage (Single Bucket with Static Prefixes)
   storage {
-    state_bucket {
-      name = "polar-gosling-state"
-      versioning = true
-      lifecycle_rules {
-        old_versions {
-          expiration_days = 90
-        }
-      }
-    }
-    
-    binary_bucket {
-      name = "polar-gosling-binaries"
-      versioning = false
-    }
+    bucket_name = "polar-gosling-storage"
+    region      = "ru-central1"
   }
+  
+  # NOTE: Folder prefixes are hardcoded implementation constants, NOT configurable:
+  #   binaries/       - Gosling CLI and OpenTofu binaries (version-managed by path)
+  #   states/         - OpenTofu state files (state locking via DynamoDB/YDB)
+  #   plugin-cache/   - OpenTofu provider plugin cache
+  #   runners-cache/  - Runner artifact cache
+  # NO S3 object versioning needed:
+  #   - Plans stored in DB, binaries path-versioned, cache is ephemeral
   
   # IAM Service Accounts
   service_accounts {
@@ -1339,8 +1335,8 @@ mothergoose {
   }
   
   storage {
-    type = "aws_s3"
-    # ... similar structure
+    bucket_name = "polar-gosling-storage"
+    region      = "us-east-1"
   }
 }
 ```
@@ -1355,7 +1351,7 @@ When `gosling deploy` is executed:
    - Create IAM service accounts and roles
    - Create databases (YDB/DynamoDB)
    - Create message queues (YMQ/SQS)
-   - Create S3 buckets for state and binaries
+   - Create S3 bucket with folder prefix structure (binaries/, states/, plugin-cache/, runners-cache/)
    - Deploy API Gateway with OpenAPI spec
    - Deploy MotherGoose FastAPI container
    - Deploy Celery worker containers
@@ -1390,7 +1386,7 @@ gosling deploy --cloud yandex --update-mg --components api_gateway,celery_worker
 - **Separation of Concerns**: MotherGoose and UglyFox have separate service accounts and permissions
 - **Internal Endpoints**: Cloud triggers invoke internal endpoints (not exposed via API Gateway)
 - **Dead Letter Queues**: Failed tasks are moved to DLQ for manual inspection
-- **Versioned State**: S3 buckets use versioning for rollback capability
+- **Single Bucket Storage**: One S3 bucket with static folder prefixes for simplicity, lower cost, and easier IAM policies
 - Can update infrastructure if needed
 - **Does NOT re-deploy everything**
 
@@ -2518,9 +2514,9 @@ CMD ["--runner-id", "${RUNNER_ID}", "--egg-name", "${EGG_NAME}"]
 ### OpenTofu State Management
 
 **State Storage**:
-- All OpenTofu state files stored in S3 buckets (both Yandex Cloud and AWS)
+- All OpenTofu state files stored in the single S3 bucket under `states/` prefix (both Yandex Cloud and AWS)
 - State locking via DynamoDB (AWS) / YDB (Yandex Cloud)
-- Versioned state files for rollback capability
+- Rollback via deployment plans stored in database (no S3 object versioning needed)
 
 **Deployment Plan Storage**:
 - Deployment plans stored as binary in DynamoDB / YDB
@@ -2531,48 +2527,95 @@ CMD ["--runner-id", "${RUNNER_ID}", "--egg-name", "${EGG_NAME}"]
   - Rollback metadata
 - Plans enable proper rollback without re-planning
 
-**S3 Bucket Structure**:
+**S3 Bucket Structure** (Single Bucket with Static Prefixes):
 ```
-s3://polar-gosling-state/
-├── tofu-states/
+s3://polar-gosling-storage/
+├── binaries/
+│   ├── gosling/
+│   │   ├── 1.0.0/
+│   │   │   └── gosling
+│   │   └── 1.1.0/
+│   │       └── gosling
+│   └── tofu/
+│       ├── 1.6.0/
+│       │   └── tofu
+│       └── 1.6.1/
+│           └── tofu
+├── states/
 │   ├── {egg_name}/
 │   │   └── terraform.tfstate
 │   └── rift/
 │       └── terraform.tfstate
-├── tofu-binaries/
-│   ├── 1.6.0/
-│   │   └── tofu (or tofu.exe)
-│   ├── 1.6.1/
-│   │   └── tofu (or tofu.exe)
-│   └── latest/
-│       └── tofu (or tofu.exe)
-└── tofu-cache/
-    ├── terraform-plugins/
-    │   ├── {provider}/{version}/
-    │   │   └── terraform-provider-{name}_{version}_{os}_{arch}.zip
-    │   └── lock.json
-    ├── modules/
-    │   ├── compute-module/
-    │   │   └── {version}/
-    │   └── lock.json
-    └── .terraform/
-        └── {egg_name}/
-            ├── providers/
-            └── modules/
+├── plugin-cache/
+│   ├── {provider}/{version}/
+│   │   └── terraform-provider-{name}_{version}_{os}_{arch}.zip
+│   ├── modules/
+│   │   └── compute-module/{version}/
+│   └── .terraform/
+│       └── {egg_name}/
+│           ├── providers/
+│           └── modules/
+└── runners-cache/
+    └── {runner_id}/
+        └── (runner-specific cached artifacts)
 ```
 
-**Note**: SHA256 checksums are stored in the database (YDB/DynamoDB) rather than as separate files in S3. The `tofu-cache/` directory stores provider plugins, modules, and `.terraform` directories to avoid re-downloading when version constraints match.
+**Note**: The four top-level prefixes (`binaries/`, `states/`, `plugin-cache/`, `runners-cache/`) are hardcoded constants in the codebase, NOT configurable via .fly files. No S3 object versioning is required: deployment plans are stored in the database, binaries are version-managed by path, and cache data is ephemeral. SHA256 checksums are stored in the database (YDB/DynamoDB) rather than as separate files in S3.
+
+**Static Prefix Constants** (Go):
+```go
+const (
+    StoragePrefixBinaries    = "binaries/"
+    StoragePrefixStates      = "states/"
+    StoragePrefixPluginCache = "plugin-cache/"
+    StoragePrefixRunnersCache = "runners-cache/"
+    S3MountPoint             = "/mnt/s3-storage"
+)
+```
+
+**Static Prefix Constants** (Python):
+```python
+STORAGE_PREFIX_BINARIES = "binaries/"
+STORAGE_PREFIX_STATES = "states/"
+STORAGE_PREFIX_PLUGIN_CACHE = "plugin-cache/"
+STORAGE_PREFIX_RUNNERS_CACHE = "runners-cache/"
+S3_MOUNT_POINT = "/mnt/s3-storage"
+```
+
+**Active Version Resolution** (DB-based, no symlinks):
+
+Active binary versions are tracked via the `is_active` flag in the `binary_versions` / `gosling_version` / `tofu_versions` tables. The filesystem path is constructed at runtime from the DB lookup:
+
+```python
+# Resolve active Gosling CLI binary path
+active_version = await db.get_active_version("gosling")  # queries binary_versions WHERE is_active=True
+binary_path = f"{S3_MOUNT_POINT}/{STORAGE_PREFIX_BINARIES}gosling/{active_version.version}/gosling"
+# e.g., /mnt/s3-storage/binaries/gosling/1.2.3/gosling
+```
+
+**s3fs Mount Configuration**:
+
+MotherGoose mounts the single storage bucket at startup:
+```bash
+s3fs <bucket-name> /mnt/s3-storage \
+    -o url=https://storage.yandexcloud.net \
+    -o use_cache=/tmp/s3fs-cache \
+    -o ensure_diskfree=1024 \
+    -o parallel_count=10 \
+    -o multipart_size=64 \
+    -o allow_other
+```
 
 ### OpenTofu Binary Management
 
 **Existing Implementation**: The system includes a comprehensive module for OpenTofu binary management located in `app/services/opentofu_binary.py`.
 
 **Binary Storage**:
-- OpenTofu binaries stored in S3 bucket (configurable path)
-- Default mount path: `/mnt/tofu_binary/{version}/`
+- OpenTofu binaries stored in the single S3 bucket under `binaries/tofu/` prefix
+- Accessed via s3fs mount at `/mnt/s3-storage/binaries/tofu/{version}/`
 - Each version includes:
   - `tofu` - The OpenTofu binary (or `tofu.exe` on Windows)
-  - SHA256 checksum for verification
+  - SHA256 checksum for verification (stored in database)
 
 **Binary Sources**:
 1. **GitHub Releases** (`OpenTofuDownloadGithub`):
@@ -2623,7 +2666,7 @@ class OpenTofuUpdateOtherSource:
 1. Check current version from YDB/DynamoDB
 2. Fetch latest version from source (GitHub API or custom)
 3. Download and verify SHA256 checksum
-4. Extract binary to `/mnt/tofu_binary/{version}/`
+4. Extract binary to `/mnt/s3-storage/binaries/tofu/{version}/`
 5. Set executable permissions (chmod 0o755)
 6. Update database with new version (set active=True)
 7. Download rollback versions (1-3 previous versions)
@@ -2653,7 +2696,7 @@ class GoslingBinary(ABC):
 
 class GoslingDownloadGithub(GoslingBinary):
     """Downloads Gosling CLI from GitHub releases with SHA256 verification"""
-    # install_dir default: /mnt/gosling_binary/{version}/
+    # install_dir default: /mnt/s3-storage/binaries/gosling/{version}/
     # binary filename: gosling (Linux) or gosling.exe (Windows)
 
 class GoslingDownloadFromOtherSource(GoslingBinary):
@@ -2677,7 +2720,14 @@ class GoslingUpdateOtherSource(GoslingUpdate):
 
 **Version Table**: `GoslingVersionTableYDB` dataclass (in `app/model/gosling_models.py`) mirrors `OpenTofuVersionTableYDB` with table name `gosling_version`.
 
-**Install Path**: `/mnt/gosling_binary/{version}/gosling`
+**Install Path**: `/mnt/s3-storage/binaries/gosling/{version}/gosling`
+
+**Active Version Resolution**: The active version is determined by querying the `gosling_version` table for the row with `active=True`. The filesystem path is constructed at runtime:
+```python
+active = await db.query_active_gosling_version()  # SELECT ... WHERE active = True
+path = f"/mnt/s3-storage/binaries/gosling/{active.version}/gosling"
+```
+No symlinks are used — the path is resolved from the database on each access.
 
 **Configuration Integration** (`OpenTofuConfiguration`):
 ```python
@@ -2733,21 +2783,18 @@ version_tf_output = template.render(
 
 **Artifact Caching in S3**:
 
-To avoid downloading artifacts repeatedly, the system caches OpenTofu artifacts in S3:
+To avoid downloading artifacts repeatedly, the system caches OpenTofu artifacts in the single S3 bucket under the `plugin-cache/` prefix:
 
 ```
-s3://polar-gosling-cache/
-├── terraform-plugins/
-│   ├── {provider}/{version}/
-│   │   └── terraform-provider-{name}_{version}_{os}_{arch}.zip
-│   └── lock.json
-├── modules/
-│   ├── compute-module/
-│   │   └── {version}/
-│   └── lock.json
-└── .terraform/
-    └── {egg_name}/
-        └── providers/
+s3://polar-gosling-storage/
+└── plugin-cache/
+    ├── {provider}/{version}/
+    │   └── terraform-provider-{name}_{version}_{os}_{arch}.zip
+    ├── modules/
+    │   └── compute-module/{version}/
+    └── .terraform/
+        └── {egg_name}/
+            └── providers/
 ```
 
 **Caching Strategy**:
@@ -3477,6 +3524,36 @@ A property is a characteristic or behavior that should hold true across all vali
 *For any* EggsBucket configuration, all repositories in the bucket should share the same runner type, resources, and cloud configuration.
 
 **Validates: Requirements 1.6**
+
+### Property 49: Storage Config Round-Trip
+
+*For any* valid StorageConfig with a bucket name and region, serializing it to a .fly storage block and parsing it back should produce an equivalent StorageConfig with the same BucketName and Region.
+
+**Validates: Requirements 25.1, 25.3, 25.12, 25.13**
+
+### Property 50: Legacy Storage Block Rejection
+
+*For any* storage block containing legacy sub-bucket definitions (state_bucket, binary_bucket, or similar nested blocks), the parser should return a descriptive migration error and not produce a valid StorageConfig.
+
+**Validates: Requirements 25.2, 25.14**
+
+### Property 51: Static Folder Prefix Immutability
+
+*For any* StorageConfig and any storage-related path construction, the folder prefixes used should always be the hardcoded constants (`binaries/`, `states/`, `plugin-cache/`, `runners-cache/`) regardless of the storage configuration content.
+
+**Validates: Requirements 25.4, 25.5, 25.6, 25.7, 25.8, 25.16**
+
+### Property 52: Init Generates Single-Bucket Storage
+
+*For any* invocation of `gosling init`, the generated MG/config.fly storage block should parse to a valid single-bucket StorageConfig containing only BucketName and Region, with no prefix, versioning, or sub-bucket configuration.
+
+**Validates: Requirements 25.10, 25.11, 1.19**
+
+### Property 53: DB-Based Active Version Path Resolution
+
+*For any* binary name and active version record in the binary_versions table, the resolved filesystem path should be constructed as `/mnt/s3-storage/binaries/{binary_name}/{version}/{binary_name}` using the version from the database row where `is_active=True`.
+
+**Validates: Requirements 23.14, 23.28, 23.30**
 
 ## Error Handling
 

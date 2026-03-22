@@ -54,7 +54,8 @@
         "get_yc_resource_manager",
         "get_yc_triggers",
         "get_yc_message_queue"
-      ]
+      ],
+      "disabledTools": []
     }
   }
 }

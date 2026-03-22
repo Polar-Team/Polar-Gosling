@@ -923,7 +923,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
     - Multiple files in both directories
   - _Requirements: 1.11, 1.12, 1.13, 1.14, 1.15, 1.16, 1.17_
 
-- [ ] 39. Fix `deployer.go` — wire MGConfig/UFConfig through Deployer and cloud clients
+- [x] 39. Fix `deployer.go` — wire MGConfig/UFConfig through Deployer and cloud clients
   - Update `Deployer.DeployBackendInfrastructure` signature to `(ctx context.Context, mgCfg *MGConfig, ufCfg *UFConfig) error`
   - Determine cloud provider from `mgCfg.Cloud.Provider` (no separate `provider` parameter needed)
   - Pass both configs through to cloud client: `d.yandexClient.DeployBackendInfrastructure(ctx, mgCfg, ufCfg)`
@@ -936,10 +936,10 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Add `--name` flag to select a specific instance to deploy (optional — if omitted, deploy all instances)
   - _Requirements: 1.11, 1.12, 1.13, 1.14, 1.15, 1.16, 1.17, 3.9, 3.11_
 
-- [ ] 40. Implement Yandex Cloud Bootstrap Infrastructure (`yandex_client.go`)
+- [-] 40. Implement Yandex Cloud Bootstrap Infrastructure (`yandex_client.go`)
   - Replace stub `DeployBackendInfrastructure` with full implementation driven by `MGConfig` + `UFConfig`
   - Implement each sub-step as a private method; call them in sequence from `DeployBackendInfrastructure`
-  - Print progress for each resource: `fmt.Printf("[%s] Creating %s...\n", mgCfg.Name, resourceName)`
+  - Print progress for each resource using spinner animation.
   - Return first error encountered (fail-fast)
   - _Requirements: 1.11, 1.12, 1.13, 1.14, 1.15, 1.16, 1.17, 3.9, 9.1_
 

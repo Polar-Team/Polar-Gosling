@@ -41,6 +41,17 @@ from data.kiro import (
     STEERING_STRUCTURE,
     STEERING_TECH,
 )
+from data.aws_cdk import (
+    AWS_CDK_OVERVIEW,
+    AWS_CDK_SQS,
+    AWS_CDK_DYNAMODB,
+    AWS_CDK_S3,
+    AWS_CDK_LAMBDA,
+    AWS_CDK_ECS_FARGATE,
+    AWS_CDK_EVENTS,
+    AWS_CDK_API_GATEWAY,
+    AWS_CDK_SERVICES_INDEX as AWS_CDK_SERVICES_INDEX_DATA,
+)
 from data.yandex_cloud import (
     YC_GRPC_API_OVERVIEW,
     YC_API_GATEWAY,
@@ -167,6 +178,52 @@ TOOLS: list[Tool] = [
         description="Get the tech stack: languages, frameworks, code quality tools, common commands, and dependency management.",
         inputSchema={"type": "object", "properties": {}, "required": []},
     ),
+    # AWS CDK v2 constructs
+    Tool(
+        name="get_aws_cdk_overview",
+        description="Get AWS CDK v2 overview: common patterns, auth, removal policies, metrics, import patterns, tagging.",
+        inputSchema={"type": "object", "properties": {}, "required": []},
+    ),
+    Tool(
+        name="get_aws_cdk_services_index",
+        description="List all AWS CDK construct modules covered by this server with tool names and Polar Gosling relevance.",
+        inputSchema={"type": "object", "properties": {}, "required": []},
+    ),
+    Tool(
+        name="get_aws_cdk_sqs",
+        description="Get AWS CDK SQS Queue construct: props, grant helpers, metrics, DLQ config. Celery broker on AWS.",
+        inputSchema={"type": "object", "properties": {}, "required": []},
+    ),
+    Tool(
+        name="get_aws_cdk_dynamodb",
+        description="Get AWS CDK DynamoDB Table construct: props, GSI/LSI, grants, auto-scaling, streams, metrics.",
+        inputSchema={"type": "object", "properties": {}, "required": []},
+    ),
+    Tool(
+        name="get_aws_cdk_s3",
+        description="Get AWS CDK S3 Bucket construct: props, grants, lifecycle rules, event notifications, CORS, encryption.",
+        inputSchema={"type": "object", "properties": {}, "required": []},
+    ),
+    Tool(
+        name="get_aws_cdk_lambda",
+        description="Get AWS CDK Lambda Function construct: props, event sources, layers, VPC, grants, metrics, aliases.",
+        inputSchema={"type": "object", "properties": {}, "required": []},
+    ),
+    Tool(
+        name="get_aws_cdk_ecs_fargate",
+        description="Get AWS CDK ECS Fargate constructs: Cluster, FargateTaskDefinition, FargateService, auto-scaling, load balancing.",
+        inputSchema={"type": "object", "properties": {}, "required": []},
+    ),
+    Tool(
+        name="get_aws_cdk_events",
+        description="Get AWS CDK EventBridge constructs: Rule, EventBus, Schedule, targets (Lambda, SQS, ECS, API Gateway).",
+        inputSchema={"type": "object", "properties": {}, "required": []},
+    ),
+    Tool(
+        name="get_aws_cdk_api_gateway",
+        description="Get AWS CDK API Gateway constructs: RestApi, HttpApi, LambdaRestApi, integrations, authorizers, domain names.",
+        inputSchema={"type": "object", "properties": {}, "required": []},
+    ),
     # Yandex Cloud gRPC API
     Tool(
         name="get_yc_grpc_overview",
@@ -261,6 +318,15 @@ _DISPATCH: dict[str, object] = {
     "get_steering_product": STEERING_PRODUCT,
     "get_steering_structure": STEERING_STRUCTURE,
     "get_steering_tech": STEERING_TECH,
+    "get_aws_cdk_overview": AWS_CDK_OVERVIEW,
+    "get_aws_cdk_services_index": AWS_CDK_SERVICES_INDEX_DATA,
+    "get_aws_cdk_sqs": AWS_CDK_SQS,
+    "get_aws_cdk_dynamodb": AWS_CDK_DYNAMODB,
+    "get_aws_cdk_s3": AWS_CDK_S3,
+    "get_aws_cdk_lambda": AWS_CDK_LAMBDA,
+    "get_aws_cdk_ecs_fargate": AWS_CDK_ECS_FARGATE,
+    "get_aws_cdk_events": AWS_CDK_EVENTS,
+    "get_aws_cdk_api_gateway": AWS_CDK_API_GATEWAY,
     "get_yc_grpc_overview": YC_GRPC_API_OVERVIEW,
     "get_yc_services_index": YC_SERVICES_INDEX,
     "get_yc_api_gateway": YC_API_GATEWAY,

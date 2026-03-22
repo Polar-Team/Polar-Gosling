@@ -63,10 +63,21 @@ type DatabaseConfig struct {
 	ServerlessMode bool
 }
 
+// BucketConfig represents a single S3/object storage bucket
+type BucketConfig struct {
+	Name       string
+	Versioning bool
+}
+
 // StorageConfig represents S3/object storage configuration
 type StorageConfig struct {
+	// Legacy flat fields (backward compat with old .fly format)
 	BucketName string
 	Region     string
+
+	// Structured sub-blocks (new .fly format)
+	StateBucket  BucketConfig
+	BinaryBucket BucketConfig
 }
 
 // ServiceAccountConfig represents a service account configuration
@@ -80,6 +91,7 @@ type ServiceAccountConfig struct {
 type MGConfig struct {
 	Name            string
 	Cloud           CloudBlockConfig
+	ImageVersion    string // Container image version tag (default: "latest")
 	APIGateway      APIGatewayConfig
 	FastAPIApp      ServerlessContainerConfig
 	CeleryWorkers   ServerlessContainerConfig
@@ -202,6 +214,14 @@ func parseMGBlock(block *parser.Block) (*MGConfig, error) {
 		return nil, fmt.Errorf("mothergoose %q: %w", mg.Name, err)
 	}
 	mg.Cloud = cloud
+
+	if v, ok := block.GetAttribute("image_version"); ok {
+		s, err := v.AsString()
+		if err != nil {
+			return nil, fmt.Errorf("mothergoose %q: invalid image_version: %w", mg.Name, err)
+		}
+		mg.ImageVersion = s
+	}
 
 	if b, ok := block.GetBlock("api_gateway"); ok {
 		mg.APIGateway, err = parseAPIGatewayBlock(b)
@@ -584,6 +604,7 @@ func parseDatabaseBlock(block *parser.Block) (DatabaseConfig, error) {
 
 func parseStorageBlock(block *parser.Block) (StorageConfig, error) {
 	s := StorageConfig{}
+	// Legacy flat attributes
 	if v, ok := block.GetAttribute("bucket_name"); ok {
 		str, err := v.AsString()
 		if err != nil {
@@ -598,7 +619,41 @@ func parseStorageBlock(block *parser.Block) (StorageConfig, error) {
 		}
 		s.Region = str
 	}
+	// Structured sub-blocks
+	if b, ok := block.GetBlock("state_bucket"); ok {
+		bc, err := parseBucketBlock(b)
+		if err != nil {
+			return s, fmt.Errorf("state_bucket: %w", err)
+		}
+		s.StateBucket = bc
+	}
+	if b, ok := block.GetBlock("binary_bucket"); ok {
+		bc, err := parseBucketBlock(b)
+		if err != nil {
+			return s, fmt.Errorf("binary_bucket: %w", err)
+		}
+		s.BinaryBucket = bc
+	}
 	return s, nil
+}
+
+func parseBucketBlock(block *parser.Block) (BucketConfig, error) {
+	bc := BucketConfig{}
+	if v, ok := block.GetAttribute("name"); ok {
+		str, err := v.AsString()
+		if err != nil {
+			return bc, fmt.Errorf("invalid name: %w", err)
+		}
+		bc.Name = str
+	}
+	if v, ok := block.GetAttribute("versioning"); ok {
+		b, err := v.AsBool()
+		if err != nil {
+			return bc, fmt.Errorf("invalid versioning: %w", err)
+		}
+		bc.Versioning = b
+	}
+	return bc, nil
 }
 
 func parseServiceAccountBlock(block *parser.Block) (ServiceAccountConfig, error) {

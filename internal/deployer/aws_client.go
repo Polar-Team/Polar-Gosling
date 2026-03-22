@@ -36,14 +36,17 @@ func NewAWSClient(ctx context.Context, region string) (*AWSClient, error) {
 }
 
 // DeployBackendInfrastructure deploys MotherGoose, UglyFox, DynamoDB, and S3 buckets
-func (c *AWSClient) DeployBackendInfrastructure(ctx context.Context) error {
-	// TODO: Implement deployment of:
-	// - MotherGoose Lambda function
-	// - UglyFox Lambda function
-	// - DynamoDB tables (runners, eggs, jobs, audit_logs, deployment_plans, tofu_versions, runner_metrics)
-	// - S3 buckets (tofu-states, tofu-binaries, tofu-cache)
-	// - API Gateway
-	// - SQS queues for Celery
+// using the parsed MG and UF .fly configurations.
+func (c *AWSClient) DeployBackendInfrastructure(ctx context.Context, mgCfg *MGConfig, ufCfg *UFConfig) error {
+	// Task 39: Implement deployment of:
+	// - MotherGoose Lambda function (mgCfg.FastAPIApp)
+	// - UglyFox Lambda function (ufCfg.Workers)
+	// - DynamoDB tables (mgCfg.Database)
+	// - S3 buckets (mgCfg.Storage)
+	// - API Gateway (mgCfg.APIGateway)
+	// - SQS queues (mgCfg.MessageQueues)
+	// - EventBridge triggers (mgCfg.Triggers)
+	// - IAM roles (mgCfg.ServiceAccounts, ufCfg.ServiceAccount)
 	return fmt.Errorf("not yet implemented")
 }
 

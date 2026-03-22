@@ -12,12 +12,11 @@ import (
 type YandexCloudClient struct {
 	sdk      *ycsdk.SDK
 	folderID string
+	cloudID  string
 }
 
-// NewYandexCloudClient creates a new Yandex Cloud client
-func NewYandexCloudClient(ctx context.Context) (*YandexCloudClient, error) {
-	// Try to load credentials from environment or service account
-	// This will use YC_TOKEN, YC_SERVICE_ACCOUNT_KEY_FILE, or instance metadata
+// NewYandexCloudClient creates a new Yandex Cloud client with folder and cloud IDs from the MG cloud block.
+func NewYandexCloudClient(ctx context.Context, folderID, cloudID string) (*YandexCloudClient, error) {
 	credentials := ycsdk.InstanceServiceAccount()
 
 	sdk, err := ycsdk.Build(ctx, ycsdk.Config{
@@ -27,26 +26,25 @@ func NewYandexCloudClient(ctx context.Context) (*YandexCloudClient, error) {
 		return nil, fmt.Errorf("failed to create Yandex Cloud SDK: %w", err)
 	}
 
-	// Get folder ID from environment variable or default
-	folderID := ""
-	// The folder ID should be provided via environment variable YC_FOLDER_ID
-	// or through the service account configuration
-
 	return &YandexCloudClient{
 		sdk:      sdk,
 		folderID: folderID,
+		cloudID:  cloudID,
 	}, nil
 }
 
 // DeployBackendInfrastructure deploys MotherGoose, UglyFox, YDB, and S3 buckets
-func (c *YandexCloudClient) DeployBackendInfrastructure(ctx context.Context) error {
-	// TODO: Implement deployment of:
-	// - MotherGoose Cloud Function
-	// - UglyFox Cloud Function
-	// - YDB tables (runners, eggs, jobs, audit_logs, deployment_plans, tofu_versions, runner_metrics)
-	// - S3 buckets (tofu-states, tofu-binaries, tofu-cache)
-	// - API Gateway
-	// - YMQ queues for Celery
+// using the parsed MG and UF .fly configurations.
+func (c *YandexCloudClient) DeployBackendInfrastructure(ctx context.Context, mgCfg *MGConfig, ufCfg *UFConfig) error {
+	// Task 39: Implement deployment of:
+	// - MotherGoose Cloud Function (mgCfg.FastAPIApp)
+	// - UglyFox Cloud Function (ufCfg.Workers)
+	// - YDB tables (mgCfg.Database)
+	// - S3 buckets (mgCfg.Storage)
+	// - API Gateway (mgCfg.APIGateway)
+	// - YMQ queues (mgCfg.MessageQueues)
+	// - Cloud triggers (mgCfg.Triggers)
+	// - Service accounts (mgCfg.ServiceAccounts, ufCfg.ServiceAccount)
 	return fmt.Errorf("not yet implemented")
 }
 

@@ -99,7 +99,7 @@ func TestDryRunNonModification(t *testing.T) {
 
 	properties.Property("dry-run mode creates no cloud resources and makes no API calls to store configurations",
 		prop.ForAll(
-			func(eggConfig *deployer.EggConfig, cloudProvider deployer.CloudProvider, region string) bool {
+			func(eggConfig *deployer.EggConfig) bool {
 				// Create a temporary Nest repository structure
 				tempDir, err := os.MkdirTemp("", "nest-test-*")
 				if err != nil {
@@ -158,7 +158,7 @@ func TestDryRunNonModification(t *testing.T) {
 
 				// Execute deployment with dry-run
 				for _, egg := range eggs {
-					if err := deployEgg(ctx, egg, cloudProvider, region, mockClient); err != nil {
+					if err := deployEgg(ctx, egg, mockClient); err != nil {
 						t.Logf("Deploy failed: %v", err)
 						return false
 					}
@@ -188,8 +188,6 @@ func TestDryRunNonModification(t *testing.T) {
 				return true
 			},
 			genDryRunEggConfig(),
-			genDryRunCloudProvider(),
-			genDryRunRegion(),
 		))
 
 	properties.TestingRun(t, gopter.ConsoleReporter(false))
@@ -224,16 +222,6 @@ func genDryRunEggConfig() gopter.Gen {
 			},
 		}
 	})
-}
-
-// genDryRunCloudProvider generates random CloudProvider for testing
-func genDryRunCloudProvider() gopter.Gen {
-	return gen.OneConstOf(deployer.CloudProviderYandex, deployer.CloudProviderAWS)
-}
-
-// genDryRunRegion generates random region strings for testing
-func genDryRunRegion() gopter.Gen {
-	return gen.OneConstOf("ru-central1-a", "us-east-1", "eu-west-1")
 }
 
 // generateConfigFly generates a .fly configuration file content from EggConfig

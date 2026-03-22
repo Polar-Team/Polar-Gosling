@@ -19,8 +19,7 @@ import (
 
 var (
 	deployDryRun bool
-	deployCloud  string
-	deployRegion string
+	deployName   string
 	deployAPIURL string
 	deployAPIKey string
 )
@@ -28,15 +27,15 @@ var (
 var deployCmd = &cobra.Command{
 	Use:   "deploy",
 	Short: "Deploy resources from Nest repository",
-	Long:  "Deploy resources from Nest repository to cloud providers.",
-	RunE:  runDeploy,
+	Long: `Deploy backend infrastructure and Egg configurations from the Nest repository.
+Cloud provider and region are read from MG/ and UF/ .fly files — no --cloud or --region flags needed.`,
+	RunE: runDeploy,
 }
 
 func init() {
 	rootCmd.AddCommand(deployCmd)
-	deployCmd.Flags().BoolVar(&deployDryRun, "dry-run", false, "Preview changes")
-	deployCmd.Flags().StringVar(&deployCloud, "cloud", "", "Cloud provider")
-	deployCmd.Flags().StringVar(&deployRegion, "region", "", "Cloud region")
+	deployCmd.Flags().BoolVar(&deployDryRun, "dry-run", false, "Preview changes without applying")
+	deployCmd.Flags().StringVar(&deployName, "name", "", "Deploy a specific MG instance by name (deploys all if omitted)")
 	deployCmd.Flags().StringVar(&deployAPIURL, "api-url", "", "MotherGoose API URL")
 	deployCmd.Flags().StringVar(&deployAPIKey, "api-key", "", "MotherGoose API key")
 	mustMarkRequired(deployCmd, "api-url")
@@ -45,50 +44,124 @@ func init() {
 
 func runDeploy(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
-	if deployCloud == "" {
-		return fmt.Errorf("--cloud flag is required")
-	}
-	if deployRegion == "" {
-		return fmt.Errorf("--region flag is required")
-	}
-	var cloudProvider deployer.CloudProvider
-	switch deployCloud {
-	case "yandex":
-		cloudProvider = deployer.CloudProviderYandex
-	case "aws":
-		cloudProvider = deployer.CloudProviderAWS
-	default:
-		return fmt.Errorf("unsupported cloud provider: %s", deployCloud)
-	}
+
 	nestRoot, err := findNestRoot()
 	if err != nil {
 		return fmt.Errorf("failed to find Nest repository: %w", err)
 	}
 	fmt.Printf("Found Nest repository at: %s\n", nestRoot)
-	eggsDir := filepath.Join(nestRoot, "Eggs")
-	eggs, err := parseEggConfigs(eggsDir)
+
+	// --- Parse MG/ and UF/ directories ---
+	mgDir := filepath.Join(nestRoot, "MG")
+	mgConfigs, err := deployer.ParseMGDirectory(mgDir)
 	if err != nil {
-		return fmt.Errorf("failed to parse Egg configurations: %w", err)
+		return fmt.Errorf("failed to parse MG directory: %w", err)
 	}
-	if len(eggs) == 0 {
-		return fmt.Errorf("no Egg configurations found")
+	if len(mgConfigs) == 0 {
+		return fmt.Errorf("no mothergoose configurations found in %s", mgDir)
 	}
-	fmt.Printf("Found %d Egg configuration(s)\n", len(eggs))
 
-	client := mothergoose.NewClient(deployAPIURL, deployAPIKey)
+	ufDir := filepath.Join(nestRoot, "UF")
+	ufConfigs, err := deployer.ParseUFDirectory(ufDir, mgConfigs)
+	if err != nil {
+		return fmt.Errorf("failed to parse UF directory: %w", err)
+	}
 
-	for _, egg := range eggs {
-		fmt.Printf("\n=== Deploying Egg: %s ===\n", egg.Name)
-		if err := deployEgg(ctx, egg, cloudProvider, deployRegion, client); err != nil {
-			return fmt.Errorf("failed to deploy egg %s: %w", egg.Name, err)
+	// Build UF lookup by mothergoose reference name
+	ufByMGName := make(map[string]*deployer.UFConfig, len(ufConfigs))
+	for _, uf := range ufConfigs {
+		ufByMGName[uf.MotherGooseRef] = uf
+	}
+
+	// Filter by --name if provided
+	if deployName != "" {
+		filtered := make([]*deployer.MGConfig, 0, 1)
+		for _, mg := range mgConfigs {
+			if mg.Name == deployName {
+				filtered = append(filtered, mg)
+				break
+			}
+		}
+		if len(filtered) == 0 {
+			return fmt.Errorf("no mothergoose instance named %q found", deployName)
+		}
+		mgConfigs = filtered
+	}
+
+	fmt.Printf("Found %d MG instance(s) to deploy\n", len(mgConfigs))
+
+	// --- Deploy backend infrastructure for each MG/UF pair ---
+	dep, err := deployer.NewDeployer(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create deployer: %w", err)
+	}
+
+	for _, mg := range mgConfigs {
+		uf, ok := ufByMGName[mg.Name]
+		if !ok {
+			return fmt.Errorf("no uglyfox configuration references mothergoose %q", mg.Name)
+		}
+
+		fmt.Printf("\n=== Deploying backend: %s (cloud=%s) ===\n", mg.Name, mg.Cloud.Provider)
+
+		if deployDryRun {
+			printBackendDryRun(mg, uf)
+			continue
+		}
+
+		if err := dep.DeployBackendInfrastructure(ctx, mg, uf); err != nil {
+			return fmt.Errorf("failed to deploy backend %s: %w", mg.Name, err)
+		}
+		fmt.Printf("Backend %s deployed successfully\n", mg.Name)
+	}
+
+	// --- Deploy Egg configurations via MotherGoose API ---
+	eggsDir := filepath.Join(nestRoot, "Eggs")
+	if _, err := os.Stat(eggsDir); err == nil {
+		eggs, err := parseEggConfigs(eggsDir)
+		if err != nil {
+			return fmt.Errorf("failed to parse Egg configurations: %w", err)
+		}
+
+		if len(eggs) > 0 {
+			fmt.Printf("\nFound %d Egg configuration(s)\n", len(eggs))
+			client := mothergoose.NewClient(deployAPIURL, deployAPIKey)
+
+			for _, egg := range eggs {
+				fmt.Printf("\n=== Deploying Egg: %s ===\n", egg.Name)
+				if err := deployEgg(ctx, egg, client); err != nil {
+					return fmt.Errorf("failed to deploy egg %s: %w", egg.Name, err)
+				}
+			}
 		}
 	}
+
 	if deployDryRun {
 		fmt.Println("\nDry-run completed successfully.")
 	} else {
 		fmt.Println("\nDeployment completed successfully.")
 	}
 	return nil
+}
+
+func printBackendDryRun(mg *deployer.MGConfig, uf *deployer.UFConfig) {
+	fmt.Println("\n--- Backend Deployment Plan (Dry Run) ---")
+	fmt.Printf("  MG Instance:    %s\n", mg.Name)
+	fmt.Printf("  Cloud Provider: %s\n", mg.Cloud.Provider)
+	if mg.Cloud.Provider == deployer.CloudProviderYandex {
+		fmt.Printf("  YC Folder ID:   %s\n", mg.Cloud.YCFolderID)
+		fmt.Printf("  YC Cloud ID:    %s\n", mg.Cloud.YCCloudID)
+	} else {
+		fmt.Printf("  AWS Region:     %s\n", mg.Cloud.AWSRegion)
+	}
+	fmt.Printf("  API Gateway:    %s\n", mg.APIGateway.Name)
+	fmt.Printf("  FastAPI App:    %s\n", mg.FastAPIApp.Name)
+	fmt.Printf("  Celery Workers: %s\n", mg.CeleryWorkers.Name)
+	fmt.Printf("  Message Queues: %d\n", len(mg.MessageQueues))
+	fmt.Printf("  Triggers:       %d\n", len(mg.Triggers))
+	fmt.Printf("  UF Instance:    %s\n", uf.Name)
+	fmt.Printf("  UF Workers:     %s\n", uf.Workers.Name)
+	fmt.Println("\n  No resources will be created")
 }
 
 func parseEggConfigs(eggsDir string) ([]*deployer.EggConfig, error) {
@@ -220,7 +293,7 @@ func convertToEggConfig(config *parser.Config, name string) (*deployer.EggConfig
 	return egg, nil
 }
 
-func deployEgg(ctx context.Context, egg *deployer.EggConfig, provider deployer.CloudProvider, region string, client mothergoose.MotherGooseClient) error {
+func deployEgg(ctx context.Context, egg *deployer.EggConfig, client mothergoose.MotherGooseClient) error {
 	configHash, err := generateConfigHash(egg)
 	if err != nil {
 		return fmt.Errorf("failed to generate hash: %w", err)
@@ -243,8 +316,8 @@ func deployEgg(ctx context.Context, egg *deployer.EggConfig, provider deployer.C
 		Status:     "pending",
 		Metadata: map[string]interface{}{
 			"runner_type": string(egg.Type),
-			"cloud":       string(provider),
-			"region":      region,
+			"cloud":       string(egg.Cloud.Provider),
+			"region":      egg.Cloud.Region,
 		},
 	}
 
@@ -255,12 +328,12 @@ func deployEgg(ctx context.Context, egg *deployer.EggConfig, provider deployer.C
 	plan.PlanBinary = planBinary
 
 	if deployDryRun {
-		fmt.Println("\n--- Deployment Plan (Dry Run) ---")
+		fmt.Println("\n--- Egg Deployment Plan (Dry Run) ---")
 		fmt.Printf("Plan ID: %s\n", plan.ID)
 		fmt.Printf("Egg Name: %s\n", plan.EggName)
 		fmt.Printf("Runner Type: %s\n", egg.Type)
-		fmt.Printf("Cloud: %s\n", provider)
-		fmt.Printf("Region: %s\n", region)
+		fmt.Printf("Cloud: %s\n", egg.Cloud.Provider)
+		fmt.Printf("Region: %s\n", egg.Cloud.Region)
 		fmt.Printf("Resources: CPU=%d, Memory=%dMB, Disk=%dGB\n", egg.Resources.CPU, egg.Resources.Memory, egg.Resources.Disk)
 		fmt.Println("\nNo resources will be created")
 		return nil

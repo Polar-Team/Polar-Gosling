@@ -647,7 +647,7 @@ func TestSDKClientCreation(t *testing.T) {
 		}
 
 		// Attempt to create Yandex Cloud client for backend infrastructure deployment
-		_, err = NewYandexCloudClient(ctx)
+		_, err = NewYandexCloudClient(ctx, "test-folder-id", "test-cloud-id")
 		if err != nil {
 			t.Logf("Yandex Cloud client creation error (expected without credentials): %v", err)
 		}

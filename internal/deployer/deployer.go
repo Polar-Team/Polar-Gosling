@@ -17,58 +17,31 @@ func NewDeployer(ctx context.Context) (*Deployer, error) {
 	return &Deployer{}, nil
 }
 
-// DeployBackendInfrastructure deploys the backend infrastructure (MotherGoose, UglyFox, databases)
-func (d *Deployer) DeployBackendInfrastructure(ctx context.Context, provider CloudProvider, region string) error {
-	switch provider {
+// DeployBackendInfrastructure deploys the backend infrastructure (MotherGoose, UglyFox, databases).
+// The cloud provider is determined from mgCfg.Cloud.Provider — no separate provider parameter needed.
+func (d *Deployer) DeployBackendInfrastructure(ctx context.Context, mgCfg *MGConfig, ufCfg *UFConfig) error {
+	switch mgCfg.Cloud.Provider {
 	case CloudProviderAWS:
 		if d.awsClient == nil {
-			client, err := NewAWSClient(ctx, region)
+			client, err := NewAWSClient(ctx, mgCfg.Cloud.AWSRegion)
 			if err != nil {
 				return fmt.Errorf("failed to create AWS client: %w", err)
 			}
 			d.awsClient = client
 		}
-		return d.awsClient.DeployBackendInfrastructure(ctx)
+		return d.awsClient.DeployBackendInfrastructure(ctx, mgCfg, ufCfg)
 
 	case CloudProviderYandex:
 		if d.yandexClient == nil {
-			client, err := NewYandexCloudClient(ctx)
+			client, err := NewYandexCloudClient(ctx, mgCfg.Cloud.YCFolderID, mgCfg.Cloud.YCCloudID)
 			if err != nil {
 				return fmt.Errorf("failed to create Yandex Cloud client: %w", err)
 			}
 			d.yandexClient = client
 		}
-		return d.yandexClient.DeployBackendInfrastructure(ctx)
+		return d.yandexClient.DeployBackendInfrastructure(ctx, mgCfg, ufCfg)
 
 	default:
-		return fmt.Errorf("unsupported cloud provider: %s", provider)
-	}
-}
-
-// GetStatus retrieves the current status of infrastructure
-func (d *Deployer) GetStatus(ctx context.Context, provider CloudProvider, region, resourceID string) (string, error) {
-	switch provider {
-	case CloudProviderAWS:
-		if d.awsClient == nil {
-			client, err := NewAWSClient(ctx, region)
-			if err != nil {
-				return "", fmt.Errorf("failed to create AWS client: %w", err)
-			}
-			d.awsClient = client
-		}
-		return d.awsClient.GetStatus(ctx, resourceID)
-
-	case CloudProviderYandex:
-		if d.yandexClient == nil {
-			client, err := NewYandexCloudClient(ctx)
-			if err != nil {
-				return "", fmt.Errorf("failed to create Yandex Cloud client: %w", err)
-			}
-			d.yandexClient = client
-		}
-		return d.yandexClient.GetStatus(ctx, resourceID)
-
-	default:
-		return "", fmt.Errorf("unsupported cloud provider: %s", provider)
+		return fmt.Errorf("unsupported cloud provider: %s", mgCfg.Cloud.Provider)
 	}
 }

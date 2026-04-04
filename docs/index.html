@@ -98,6 +98,10 @@
     .sidebar a.active { color: var(--accent); border-left-color: var(--accent); background: var(--surface2); }
     .content { flex: 1; padding: 3rem 4rem; max-width: 900px; }
 
+    /* reveal */
+    .reveal{opacity:0;transform:translateY(20px);transition:opacity .45s,transform .45s}
+    .reveal.visible{opacity:1;transform:none}
+
     /* Mobile sidebar drawer */
     #sidebar-backdrop {
       display: none;
@@ -426,7 +430,7 @@
     </div>
 
     <!-- OVERVIEW -->
-    <section class="section" id="overview">
+    <section class="section reveal" id="overview">
       <h2>Overview</h2>
       <p>Gosling is the CLI tool for the <strong>Polar Gosling</strong> GitOps runner orchestration system. It manages the lifecycle of GitLab CI/CD runners across Yandex Cloud and AWS through a Git-native workflow.</p>
       <div class="card-grid">
@@ -438,7 +442,7 @@
     </section>
 
     <!-- QUICKSTART -->
-    <section class="section" id="quickstart">
+    <section class="section reveal" id="quickstart">
       <h2>Quickstart</h2>
       <h3>1. Initialize a Nest repository</h3>
       <pre><code><span class="cmt"># Create a new Nest repository in the current directory</span>
@@ -469,7 +473,7 @@ gosling deploy --api-url https://mg.example.com --api-key $MG_KEY</code></pre>
     </section>
 
     <!-- INSTALLATION -->
-    <section class="section" id="installation">
+    <section class="section reveal" id="installation">
       <h2>Installation</h2>
       <h3>Build from source</h3>
       <pre><code>git clone https://github.com/polar-gosling/gosling.git
@@ -485,13 +489,13 @@ sudo mv gosling /usr/local/bin/</code></pre>
     </section>
 
     <!-- COMMANDS -->
-    <section class="section" id="commands">
+    <section class="section reveal" id="commands">
       <h2>Command Reference</h2>
       <p>All commands follow the pattern <code>gosling &lt;command&gt; [flags]</code>. Run <code>gosling --help</code> or <code>gosling &lt;command&gt; --help</code> for inline help.</p>
     </section>
 
     <!-- CMD: INIT -->
-    <section class="section" id="cmd-init">
+    <section class="section reveal" id="cmd-init">
       <div class="cmd-block">
         <div class="cmd-header">
           <span class="cmd-name">gosling init</span>
@@ -519,7 +523,7 @@ gosling init --path /path/to/nest</code></pre>
     </section>
 
     <!-- CMD: ADD -->
-    <section class="section" id="cmd-add">
+    <section class="section reveal" id="cmd-add">
       <div class="cmd-block">
         <div class="cmd-header">
           <span class="cmd-name">gosling add</span>
@@ -554,7 +558,7 @@ gosling add job update-runners</code></pre>
     </section>
 
     <!-- CMD: VALIDATE -->
-    <section class="section" id="cmd-validate">
+    <section class="section reveal" id="cmd-validate">
       <div class="cmd-block">
         <div class="cmd-header">
           <span class="cmd-name">gosling validate</span>
@@ -579,7 +583,7 @@ gosling validate Eggs/my-app/config.fly</code></pre>
     </section>
 
     <!-- CMD: FMT -->
-    <section class="section" id="cmd-fmt">
+    <section class="section reveal" id="cmd-fmt">
       <div class="cmd-block">
         <div class="cmd-header">
           <span class="cmd-name">gosling fmt</span>
@@ -626,7 +630,7 @@ gosling fmt Eggs/my-app/config.fly --stdout</code></pre>
     </section>
 
     <!-- CMD: PARSE -->
-    <section class="section" id="cmd-parse">
+    <section class="section reveal" id="cmd-parse">
       <div class="cmd-block">
         <div class="cmd-header">
           <span class="cmd-name">gosling parse</span>
@@ -651,7 +655,7 @@ gosling parse UF/config.fly --type uglyfox</code></pre>
     </section>
 
     <!-- CMD: DEPLOY -->
-    <section class="section" id="cmd-deploy">
+    <section class="section reveal" id="cmd-deploy">
       <div class="cmd-block">
         <div class="cmd-header">
           <span class="cmd-name">gosling deploy</span>
@@ -692,7 +696,7 @@ gosling deploy \
     </section>
 
     <!-- CMD: ROLLBACK -->
-    <section class="section" id="cmd-rollback">
+    <section class="section reveal" id="cmd-rollback">
       <div class="cmd-block">
         <div class="cmd-header">
           <span class="cmd-name">gosling rollback</span>
@@ -718,7 +722,7 @@ gosling rollback --egg my-app --to abc12345 --api-url https://mg.example.com --a
     </section>
 
     <!-- CMD: STATUS -->
-    <section class="section" id="cmd-status">
+    <section class="section reveal" id="cmd-status">
       <div class="cmd-block">
         <div class="cmd-header">
           <span class="cmd-name">gosling status</span>
@@ -741,12 +745,12 @@ gosling status --all --api-url https://mg.example.com --api-key $MG_API_KEY</cod
     </section>
 
     <!-- FLY LANGUAGE -->
-    <section class="section" id="fly-language">
+    <section class="section reveal" id="fly-language">
       <h2>Fly Language</h2>
       <p>The <strong>Fly language</strong> (<code>.fly</code> files) is a typed, HCL-inspired DSL for declaring runner infrastructure. It enforces stronger typing than HCL and provides structured validation.</p>
     </section>
 
-    <section class="section" id="fly-overview">
+    <section class="section reveal" id="fly-overview">
       <h3>Syntax Overview</h3>
       <p>A <code>.fly</code> file contains one or more top-level <strong>blocks</strong>. Each block has a type, optional labels, attributes, and nested blocks.</p>
       <pre><code><span class="kw">block_type</span> <span class="label">"label"</span> {
@@ -778,7 +782,7 @@ gosling status --all --api-url https://mg.example.com --api-key $MG_API_KEY</cod
     </section>
 
     <!-- EGG BLOCK -->
-    <section class="section" id="fly-egg">
+    <section class="section reveal" id="fly-egg">
       <h3>egg block</h3>
       <p>Defines a single managed repository with its runner configuration. Lives at <code>Eggs/&lt;name&gt;/config.fly</code>.</p>
       <pre><code><span class="kw">egg</span> <span class="label">"my-app"</span> {
@@ -831,7 +835,7 @@ gosling status --all --api-url https://mg.example.com --api-key $MG_API_KEY</cod
     </section>
 
     <!-- EGGSBUCKET BLOCK -->
-    <section class="section" id="fly-eggsbucket">
+    <section class="section reveal" id="fly-eggsbucket">
       <h3>eggsbucket block</h3>
       <p>Groups multiple repositories under shared runner configuration. Lives at <code>Eggs/&lt;name&gt;/config.fly</code>. Replaces the <code>gitlab</code> block with a <code>repositories</code> block containing individual <code>repo</code> entries.</p>
       <pre><code><span class="kw">eggsbucket</span> <span class="label">"my-group"</span> {
@@ -874,7 +878,7 @@ gosling status --all --api-url https://mg.example.com --api-key $MG_API_KEY</cod
     </section>
 
     <!-- JOB BLOCK -->
-    <section class="section" id="fly-job">
+    <section class="section reveal" id="fly-job">
       <h3>job block</h3>
       <p>Defines a self-management task executed by MotherGoose on a dedicated runner. Lives at <code>Jobs/&lt;name&gt;.fly</code>. Used for secret rotation, runner image updates, Nest maintenance, etc.</p>
       <pre><code><span class="kw">job</span> <span class="label">"rotate-secrets"</span> {
@@ -907,7 +911,7 @@ gosling status --all --api-url https://mg.example.com --api-key $MG_API_KEY</cod
     </section>
 
     <!-- UGLYFOX BLOCK -->
-    <section class="section" id="fly-uglyfox">
+    <section class="section reveal" id="fly-uglyfox">
       <h3>uglyfox block</h3>
       <p>Defines runner lifecycle policies for the UglyFox service. Lives at <code>UF/config.fly</code>. Controls pruning thresholds, Apex/Nadir pool sizes, and lifecycle rules. References a <code>mothergoose</code> instance by name — cloud settings are inherited from it.</p>
       <pre><code><span class="kw">uglyfox</span> <span class="label">"yandex-prod"</span> {
@@ -969,7 +973,7 @@ gosling status --all --api-url https://mg.example.com --api-key $MG_API_KEY</cod
     </section>
 
     <!-- MOTHERGOOSE BLOCK -->
-    <section class="section" id="fly-mothergoose">
+    <section class="section reveal" id="fly-mothergoose">
       <h3>mothergoose block</h3>
       <p>Defines the MotherGoose backend infrastructure: API Gateway, serverless containers, message queues, cloud triggers, database, and storage. Lives in <code>MG/*.fly</code>. A single file can contain multiple <code>mothergoose</code> blocks, each identified by a label (instance name).</p>
       <pre><code><span class="kw">mothergoose</span> <span class="label">"yandex-prod"</span> {
@@ -1080,7 +1084,7 @@ gosling status --all --api-url https://mg.example.com --api-key $MG_API_KEY</cod
     </section>
 
     <!-- SECRET URIS -->
-    <section class="section" id="fly-secrets">
+    <section class="section reveal" id="fly-secrets">
       <h3>Secret URIs</h3>
       <p>Sensitive values are never stored in <code>.fly</code> files directly. Instead, use URI references that MotherGoose resolves at runtime from the appropriate secret backend.</p>
       <pre><code><span class="cmt"># Yandex Cloud Lockbox</span>
@@ -1105,7 +1109,7 @@ gosling status --all --api-url https://mg.example.com --api-key $MG_API_KEY</cod
     </section>
 
     <!-- TYPE SYSTEM -->
-    <section class="section" id="fly-types">
+    <section class="section reveal" id="fly-types">
       <h3>Type System</h3>
       <p>The Fly parser enforces types at parse time. Assigning a number where a string is expected produces a validation error with file position information.</p>
       <pre><code><span class="cmt"># ✅ Correct</span>
@@ -1123,11 +1127,11 @@ gosling status --all --api-url https://mg.example.com --api-key $MG_API_KEY</cod
     </section>
 
     <!-- CONCEPTS -->
-    <section class="section" id="concepts">
+    <section class="section reveal" id="concepts">
       <h2>Concepts</h2>
     </section>
 
-    <section class="section" id="concepts-nest">
+    <section class="section reveal" id="concepts-nest">
       <h3>Nest Repository</h3>
       <p>The <strong>Nest</strong> is the single source of truth Git repository for all runner configuration. Gosling reads from it; MotherGoose syncs it every 5 minutes and on push webhooks.</p>
       <img src="./nest.png" alt="Nest repository structure" style="display:block;margin:1.25rem auto 1.75rem;max-width:100%;object-fit:contain;filter:drop-shadow(0 0 18px rgba(56,189,248,0.3));" />
@@ -1145,7 +1149,7 @@ gosling status --all --api-url https://mg.example.com --api-key $MG_API_KEY</cod
     └── config.fly            <span class="cmt"># MotherGoose infra config</span></code></pre>
     </section>
 
-    <section class="section" id="concepts-runners">
+    <section class="section reveal" id="concepts-runners">
       <h3>Runners</h3>
       <p>Runners are the CI/CD execution environments provisioned by MotherGoose via OpenTofu. Two types are supported:</p>
       <div class="card-grid">
@@ -1163,7 +1167,7 @@ gosling status --all --api-url https://mg.example.com --api-key $MG_API_KEY</cod
       <p>Runner state is tracked in YDB (Yandex Cloud) or DynamoDB (AWS): <code>ACTIVE</code> → <code>IDLE</code> → <code>BUSY</code> → <code>FAILED</code> → <code>TERMINATED</code>.</p>
     </section>
 
-    <section class="section" id="concepts-pools">
+    <section class="section reveal" id="concepts-pools">
       <h3>Apex / Nadir Pools</h3>
       <p>VM runners are managed in two pools by the <strong>UglyFox</strong> service:</p>
       <img src="./uglyfox.png" alt="Nest repository structure" style="display:block;margin:1.25rem auto 1.75rem;max-width:100%;object-fit:contain;filter:drop-shadow(0 0 18px rgba(56,189,248,0.3));" />
@@ -1175,7 +1179,7 @@ gosling status --all --api-url https://mg.example.com --api-key $MG_API_KEY</cod
       <p>Pool sizes and thresholds are configured per <code>runners_condition</code> group in <code>UF/config.fly</code>.</p>
     </section>
 
-    <section class="section" id="concepts-services">
+    <section class="section reveal" id="concepts-services">
       <h3>System Services</h3>
       <div class="card-grid">
         <div class="card">

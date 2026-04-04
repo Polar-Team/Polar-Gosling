@@ -1251,6 +1251,10 @@ UglyFox (background)
   backdrop.addEventListener('click', closeSidebar);
   mobileSidebar.querySelectorAll('a').forEach(a => a.addEventListener('click', closeSidebar));
 
+  /* ── Scroll reveal ── */
+  const obs=new IntersectionObserver(entries=>{entries.forEach(e=>{if(e.isIntersecting)e.target.classList.add('visible')})},{threshold:.08});
+  document.querySelectorAll('.reveal').forEach(el=>obs.observe(el));
+
   // Highlight active sidebar link on scroll
   const sections = document.querySelectorAll('.section[id]');
   const sidebarLinks = document.querySelectorAll('.sidebar a');

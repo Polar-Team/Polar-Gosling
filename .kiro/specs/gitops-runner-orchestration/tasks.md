@@ -1059,13 +1059,13 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
     - Update any existing code that hardcodes these paths to use the constants
     - _Requirements: 25.4, 25.5, 25.6, 25.7, 25.8_
 
-- [ ] 43. Update init template tests and parse integration tests
-  - [ ] 43.1 Update mg_config_test.go for single-bucket storage format
+- [x] 43. Update init template tests and parse integration tests
+  - [x] 43.1 Update mg_config_test.go for single-bucket storage format
     - Update test fixtures that reference old 2-bucket storage format (state_bucket, binary_bucket)
     - Replace with single-bucket format using `bucket_name` and `region` attributes
     - Add test case for legacy sub-bucket detection (expect migration error)
     - _Requirements: 25.12, 25.13, 25.14_
-  - [ ] 43.2 Update parse_integration_test.go for single-bucket storage format
+  - [x] 43.2 Update parse_integration_test.go for single-bucket storage format
     - Update integration test .fly fixtures that reference old bucket names
     - Replace with single-bucket storage block format
     - Verify end-to-end parsing produces correct StorageConfig with BucketName and Region

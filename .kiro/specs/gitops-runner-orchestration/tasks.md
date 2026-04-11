@@ -1071,31 +1071,31 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
     - Verify end-to-end parsing produces correct StorageConfig with BucketName and Region
     - _Requirements: 25.12, 25.13_
 
-- [ ] 44. Checkpoint - Unified storage model
+- [x] 44. Checkpoint - Unified storage model
   - Ensure all Go tests pass (`go test ./...` in Polar-Gosling)
   - Ensure init template generates valid single-bucket config
   - Ensure legacy sub-bucket format produces descriptive migration error
   - Ensure static prefix constants are consistent between Go and Python
   - Ask the user if questions arise
 
-- [ ]* 45. Write property tests for unified storage model
-  - [ ]* 45.1 Write property test for storage config round-trip
+- [x] 45. Write property tests for unified storage model
+  - [x] 45.1 Write property test for storage config round-trip
     - **Property 49: Storage Config Round-Trip**
     - For any valid StorageConfig with bucket name and region, serializing to .fly and parsing back produces equivalent StorageConfig
     - **Validates: Requirements 25.1, 25.3, 25.12, 25.13**
-  - [ ]* 45.2 Write property test for legacy storage block rejection
+  - [x] 45.2 Write property test for legacy storage block rejection
     - **Property 50: Legacy Storage Block Rejection**
     - For any storage block containing legacy sub-bucket definitions, parser returns descriptive migration error
     - **Validates: Requirements 25.2, 25.14**
-  - [ ]* 45.3 Write property test for static folder prefix immutability
+  - [x] 45.3 Write property test for static folder prefix immutability
     - **Property 51: Static Folder Prefix Immutability**
     - For any StorageConfig, folder prefixes are always the hardcoded constants regardless of configuration content
     - **Validates: Requirements 25.4, 25.5, 25.6, 25.7, 25.8, 25.16**
-  - [ ]* 45.4 Write property test for init single-bucket generation
+  - [x] 45.4 Write property test for init single-bucket generation
     - **Property 52: Init Generates Single-Bucket Storage**
     - For any invocation of `gosling init`, generated storage block parses to valid single-bucket StorageConfig with only BucketName and Region
     - **Validates: Requirements 25.10, 25.11, 1.19**
-  - [ ]* 45.5 Write property test for DB-based active version path resolution
+  - [x] 45.5 Write property test for DB-based active version path resolution
     - **Property 53: DB-Based Active Version Path Resolution**
     - For any binary name and active version record, resolved path is `/mnt/s3-storage/binaries/{binary_name}/{version}/{binary_name}`
     - **Validates: Requirements 23.30, 25.15, 25.16**

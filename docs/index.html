@@ -354,6 +354,8 @@
     <a href="#cmd-deploy">gosling deploy</a>
     <a href="#cmd-rollback">gosling rollback</a>
     <a href="#cmd-status">gosling status</a>
+    <a href="#cmd-runner">gosling runner</a>
+    <a href="#cmd-rift">rift serve</a>
   </div>
   <div class="mobile-sidebar-section">
     <div class="mobile-sidebar-title">Fly Language</div>
@@ -394,6 +396,8 @@
       <a href="#cmd-deploy">gosling deploy</a>
       <a href="#cmd-rollback">gosling rollback</a>
       <a href="#cmd-status">gosling status</a>
+      <a href="#cmd-runner">gosling runner</a>
+      <a href="#cmd-rift">rift serve</a>
     </div>
     <div class="sidebar-section">
       <div class="sidebar-title">Fly Language</div>
@@ -740,6 +744,94 @@ gosling rollback --egg my-app --to abc12345 --api-url https://mg.example.com --a
           </table>
           <pre><code>gosling status --egg my-app --api-url https://mg.example.com --api-key $MG_API_KEY
 gosling status --all --api-url https://mg.example.com --api-key $MG_API_KEY</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- CMD: RUNNER -->
+    <section class="section reveal" id="cmd-runner">
+      <div class="cmd-block">
+        <div class="cmd-header">
+          <span class="cmd-name">gosling runner</span>
+          <span class="cmd-desc">Start the GitLab Runner Agent manager inside a deployed container or VM</span>
+        </div>
+        <div class="cmd-body">
+          <code class="cmd-usage">gosling runner [flags]</code>
+          <p>Starts the GitLab Runner Agent manager inside a deployed runner container or VM. Registers the agent with GitLab, manages the agent process lifecycle, synchronises the agent version, and reports health metrics and heartbeats to MotherGoose.</p>
+          <div class="callout callout-warn">
+            <strong>⚠️ Internal entrypoint</strong>
+            This command is the container/VM entrypoint injected by OpenTofu during runner deployment. It is not intended for direct developer use.
+          </div>
+          <table>
+            <tr><th>Flag</th><th>Required</th><th>Description</th></tr>
+            <tr><td class="flag-name">--egg-name</td><td><span class="flag-required">required</span></td><td>Name of the Egg this runner belongs to</td></tr>
+            <tr><td class="flag-name">--token-secret</td><td><span class="flag-required">required</span></td><td>Secret URI for the GitLab runner registration token (e.g. <code>yc-lockbox://abc/runner-token</code>)</td></tr>
+            <tr><td class="flag-name">--runner-id</td><td><span class="flag-optional">optional</span></td><td>Unique runner ID (defaults to <code>runner-&lt;egg-name&gt;</code>)</td></tr>
+            <tr><td class="flag-name">--gitlab-server</td><td><span class="flag-optional">optional</span></td><td>GitLab server FQDN (default: <code>gitlab.com</code>)</td></tr>
+            <tr><td class="flag-name">--tags</td><td><span class="flag-optional">optional</span></td><td>Comma-separated runner tags</td></tr>
+            <tr><td class="flag-name">--agent-version</td><td><span class="flag-optional">optional</span></td><td>Required GitLab Runner Agent version (uses latest if not specified)</td></tr>
+            <tr><td class="flag-name">--mothergoose-url</td><td><span class="flag-optional">optional</span></td><td>MotherGoose API URL for metrics reporting</td></tr>
+            <tr><td class="flag-name">--api-key</td><td><span class="flag-optional">optional</span></td><td>MotherGoose API key</td></tr>
+            <tr><td class="flag-name">--metrics-interval</td><td><span class="flag-optional">optional</span></td><td>How often to report full metrics (default: <code>30s</code>)</td></tr>
+            <tr><td class="flag-name">--heartbeat-interval</td><td><span class="flag-optional">optional</span></td><td>How often to send heartbeat pings (default: <code>30s</code>)</td></tr>
+          </table>
+          <h4>Signal handling</h4>
+          <table>
+            <tr><th>Signal</th><th>Behavior</th></tr>
+            <tr><td><code>SIGTERM</code></td><td>Graceful shutdown</td></tr>
+            <tr><td><code>SIGINT</code></td><td>Graceful shutdown</td></tr>
+            <tr><td><code>SIGHUP</code></td><td>Reload configuration without restart</td></tr>
+          </table>
+          <pre><code>gosling runner \
+  --egg-name my-service \
+  --token-secret yc-lockbox://abc123/runner-token \
+  --mothergoose-url https://mg.example.com</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- CMD: RIFT SERVE -->
+    <section class="section reveal" id="cmd-rift">
+      <div class="cmd-block">
+        <div class="cmd-header">
+          <span class="cmd-name">rift serve</span>
+          <span class="cmd-desc">Start the Rift Docker context proxy and image cache server</span>
+        </div>
+        <div class="cmd-body">
+          <code class="cmd-usage">rift serve [flags]</code>
+          <p>Starts the Rift Docker context proxy and image cache server. Rift is a separate binary (<code>cmd/rift/</code>) that shares the CLI package. It proxies Docker API requests from runners to the local Docker daemon and caches image tarballs to S3. Lifecycle (VM create/destroy) is driven by MotherGoose via OpenTofu — Rift itself only handles the serve loop.</p>
+          <div class="callout callout-info">
+            <strong>ℹ️ Egg runners only</strong>
+            Rift is only available for Egg runners with <code>tofu_rift_required = true</code>. Job runners cannot use Rift.
+          </div>
+          <table>
+            <tr><th>Flag</th><th>Required</th><th>Description</th></tr>
+            <tr><td class="flag-name">--auth-token-secret</td><td><span class="flag-required">required</span></td><td>Secret URI for the bearer auth token (<code>yc-lockbox://</code>, <code>aws-sm://</code>, <code>vault://</code>)</td></tr>
+            <tr><td class="flag-name">--s3-bucket</td><td><span class="flag-required">required</span></td><td>S3 bucket for image cache storage</td></tr>
+            <tr><td class="flag-name">--listen</td><td><span class="flag-optional">optional</span></td><td>TCP address to listen on (default: <code>:2376</code>)</td></tr>
+            <tr><td class="flag-name">--s3-endpoint</td><td><span class="flag-optional">optional</span></td><td>S3-compatible endpoint URL (empty = AWS default)</td></tr>
+            <tr><td class="flag-name">--s3-region</td><td><span class="flag-optional">optional</span></td><td>S3 bucket region</td></tr>
+            <tr><td class="flag-name">--s3-key-prefix</td><td><span class="flag-optional">optional</span></td><td>Key prefix inside the S3 bucket (default: <code>rift/</code>)</td></tr>
+            <tr><td class="flag-name">--s3-credentials-secret</td><td><span class="flag-optional">optional</span></td><td>Secret URI for S3 credentials</td></tr>
+            <tr><td class="flag-name">--docker-socket</td><td><span class="flag-optional">optional</span></td><td>Path to Docker daemon socket (default: <code>/var/run/docker.sock</code>)</td></tr>
+            <tr><td class="flag-name">--image-cache-dir</td><td><span class="flag-optional">optional</span></td><td>Local directory for image tarballs (default: <code>/var/cache/rift/images</code>)</td></tr>
+            <tr><td class="flag-name">--mothergoose-url</td><td><span class="flag-optional">optional</span></td><td>MotherGoose API URL for state reporting</td></tr>
+            <tr><td class="flag-name">--api-key</td><td><span class="flag-optional">optional</span></td><td>MotherGoose API key</td></tr>
+            <tr><td class="flag-name">--anti-flap</td><td><span class="flag-optional">optional</span></td><td>Minimum time in running state before shutdown is allowed (default: <code>2m</code>)</td></tr>
+            <tr><td class="flag-name">--idle-timeout</td><td><span class="flag-optional">optional</span></td><td>Idle time before automatic shutdown (default: <code>10m</code>)</td></tr>
+            <tr><td class="flag-name">--cache-sync-interval</td><td><span class="flag-optional">optional</span></td><td>How often to sync image cache to S3 (default: <code>5m</code>)</td></tr>
+          </table>
+          <h4>Signal handling</h4>
+          <table>
+            <tr><th>Signal</th><th>Behavior</th></tr>
+            <tr><td><code>SIGTERM</code></td><td>Graceful shutdown (30s timeout)</td></tr>
+            <tr><td><code>SIGINT</code></td><td>Graceful shutdown (30s timeout)</td></tr>
+          </table>
+          <p>Environment fallback: <code>RIFT_AUTH_TOKEN</code> can be used for local development when the secret backend is not yet wired.</p>
+          <pre><code>rift serve \
+  --auth-token-secret yc-lockbox://abc123/rift-token \
+  --s3-bucket my-rift-cache \
+  --s3-region ru-central1</code></pre>
         </div>
       </div>
     </section>

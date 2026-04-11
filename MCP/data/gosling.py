@@ -247,7 +247,7 @@ FLY_LANGUAGE_REFERENCE: dict[str, Any] = {
         },
         "uglyfox": {
             "location": "UF/*.fly (multiple files allowed; multiple blocks per file allowed)",
-            "description": "UglyFox lifecycle and pruning configuration. Has a label (instance name) and a mothergoose attribute that references a named MotherGoose instance. UglyFox does NOT have its own cloud block — it inherits cloud settings from the referenced MotherGoose instance.",
+            "description": "UglyFox lifecycle and pruning configuration. Has a label (instance name) and a required mothergoose attribute that binds it to a named MotherGoose instance. UglyFox does NOT have its own cloud block — it inherits cloud settings from the referenced MotherGoose instance.",
             "label": "instance name — e.g. uglyfox \"yandex_test\" { ... }",
             "required_attributes": {
                 "mothergoose": {"type": "string", "description": "Name of the MotherGoose instance to reference (e.g. \"yandex_test\"). Cloud settings are copied from that instance."},
@@ -270,9 +270,12 @@ FLY_LANGUAGE_REFERENCE: dict[str, Any] = {
                     "nadir.min_count": {"type": "number"},
                     "nadir.idle_timeout": {"type": "string", "description": "Demote to nadir after idle"},
                 },
-                "policies.rule.<name>": {
-                    "condition": {"type": "string", "description": "Rule condition expression"},
-                    "action": {"type": "string", "values": ["terminate", "demote_to_nadir", "promote_to_apex"]},
+                "policies": {
+                    "description": "Optional policy rules for runner lifecycle actions.",
+                    "rule.<name>": {
+                        "condition": {"type": "string", "description": "Rule condition expression"},
+                        "action": {"type": "string", "values": ["terminate", "demote_to_nadir", "promote_to_apex"]},
+                    },
                 },
             },
         },
@@ -289,16 +292,58 @@ FLY_LANGUAGE_REFERENCE: dict[str, Any] = {
                     "aws_account_id": {"type": "string", "description": "Required when provider=aws"},
                 },
                 "api_gateway": {
-                    "domain": {"type": "string"},
-                    "cors": {"type": "block", "description": "CORS configuration"},
+                    "name": {"type": "string"},
+                    "description": {"type": "string"},
+                    "service_account": {"type": "string"},
                 },
-                "fast_api_app": {"description": "ServerlessContainerConfig for the FastAPI container"},
-                "celery_workers": {"description": "ServerlessContainerConfig for the Celery worker container"},
-                "message_queues": {"description": "List of MessageQueueConfig blocks (name, visibility_timeout, retention_period, dlq)"},
-                "triggers": {"description": "List of TriggerConfig blocks (name, schedule cron, endpoint, method, service_account)"},
-                "database": {"description": "DatabaseConfig — YDB serverless database settings"},
-                "storage": {"description": "StorageConfig — single unified S3 bucket (bucket_name, region). Static folder prefixes are hardcoded: binaries/, plans/, cache/, rift/"},
-                "service_accounts": {"description": "List of ServiceAccountConfig blocks (name, roles)"},
+                "fastapi_app": {
+                    "description": "ServerlessContainerConfig for the FastAPI container",
+                    "name": {"type": "string"},
+                    "image": {"type": "string"},
+                    "memory": {"type": "number", "description": "MB"},
+                    "cores": {"type": "number", "description": "vCPUs"},
+                    "core_fraction": {"type": "number", "description": "% of vCPU (YC only)"},
+                    "execution_timeout": {"type": "string", "description": "Duration string e.g. '60s'"},
+                    "concurrency": {"type": "number"},
+                    "service_account": {"type": "string"},
+                },
+                "celery_workers": {
+                    "description": "Celery worker container config. Name, image, and service_account inherited from fastapi_app.",
+                    "memory": {"type": "number", "description": "MB"},
+                    "cores": {"type": "number", "description": "vCPUs"},
+                    "core_fraction": {"type": "number", "description": "% of vCPU (YC only)"},
+                    "execution_timeout": {"type": "string", "description": "Duration string"},
+                    "concurrency": {"type": "number"},
+                },
+                "git_sync_trigger": {
+                    "schedule": {"type": "cron", "description": "Cron expression e.g. '*/5 * * * *'"},
+                    "service_account": {"type": "string"},
+                },
+                "mothergoose_queues": {
+                    "description": "Task queue and dead-letter queue configuration.",
+                    "task_queue": {
+                        "name": {"type": "string"},
+                        "visibility_timeout": {"type": "number"},
+                        "message_retention": {"type": "number"},
+                    },
+                    "dlq": {
+                        "name": {"type": "string"},
+                        "message_retention": {"type": "number"},
+                    },
+                },
+                "database": {
+                    "name": {"type": "string"},
+                    "type": {"type": "string", "description": "e.g. 'ydb'"},
+                    "serverless_mode": {"type": "bool"},
+                },
+                "storage": {
+                    "bucket_name": {"type": "string"},
+                    "region": {"type": "string"},
+                },
+                "service_account.<name>": {
+                    "description": {"type": "string"},
+                    "roles": {"type": "list(string)"},
+                },
             },
         },
     },
@@ -382,60 +427,103 @@ job "rotate-secrets" {
 """,
     "uglyfox_config": """
 # UF/config.fly
-uglyfox {
+uglyfox "yandex_test" {
+  mothergoose = "yandex_test"
+
   pruning {
-    max_age_hours          = 72
-    max_failures           = 5
-    idle_timeout_minutes   = 30
-    check_interval_seconds = 60
+    failed_threshold = 3
+    max_age          = "24h"
+    check_interval   = "5m"
   }
 
-  apex_pool {
-    min_size           = 1
-    max_size           = 10
-    scale_up_threshold = 5
+  runners_condition "default" {
+    eggs_entities = ["my-service", "platform-team"]
+
+    apex {
+      max_count        = 10
+      min_count        = 2
+      cpu_threshold    = 80
+      memory_threshold = 70
+    }
+
+    nadir {
+      max_count    = 5
+      min_count    = 0
+      idle_timeout = "30m"
+    }
   }
 
-  nadir_pool {
-    min_size            = 0
-    max_size            = 5
-    warmup_time_seconds = 30
-  }
-
-  runners_condition {
-    egg_name     = "my-service"
-    max_failures = 3
-    max_age_hours = 24
+  policies {
+    rule "terminate_old_failed" {
+      condition = "failed_count >= 3 AND age > 1h"
+      action    = "terminate"
+    }
   }
 }
 """,
     "mothergoose_config": """
 # MG/config.fly
-mothergoose {
+mothergoose "yandex_test" {
+  cloud {
+    provider     = "yandex"
+    yc_folder_id = "b1gxxxxxxxxxxxxxxx"
+    yc_cloud_id  = "b1gyyyyyyyyyyyyyyy"
+  }
+
   api_gateway {
-    cloud_provider = "yandex"
-    region         = "ru-central1"
-    domain         = "mg.example.com"
-    tls             = true
+    name            = "polar-gosling-gw"
+    description     = "Main API gateway"
+    service_account = "mg-sa"
   }
 
-  message_queue {
-    cloud_provider = "yandex"
-    queue_name     = "polar-gosling-tasks"
+  fastapi_app {
+    name              = "mg-fastapi"
+    image             = "ghcr.io/polar-team/mothergoose:latest"
+    memory            = 512
+    cores             = 1
+    execution_timeout = "60s"
+    concurrency       = 4
+    service_account   = "mg-sa"
   }
 
-  cloud_trigger {
-    type     = "timer"
-    schedule = "*/5 * * * *"  # Every 5 minutes
-    target   = "/internal/sync-git"
+  celery_workers {
+    memory            = 1024
+    cores             = 2
+    execution_timeout = "300s"
+    concurrency       = 2
   }
 
-  container {
-    image  = "registry.example.com/polar-gosling/mothergoose:latest"
-    cpu    = 1
-    memory = "512MB"
-    min_instances = 1
-    max_instances = 5
+  git_sync_trigger {
+    schedule        = "*/5 * * * *"
+    service_account = "mg-sa"
+  }
+
+  mothergoose_queues {
+    task_queue {
+      name               = "mg-tasks"
+      visibility_timeout = 30
+      message_retention  = 86400
+    }
+    dlq {
+      name              = "mg-tasks-dlq"
+      message_retention = 86400
+    }
+  }
+
+  database {
+    name            = "polar-gosling-db"
+    type            = "ydb"
+    serverless_mode = true
+  }
+
+  storage {
+    bucket_name = "polar-gosling-storage"
+    region      = "ru-central1"
+  }
+
+  service_account "mg-sa" {
+    description = "MotherGoose service account"
+    roles       = ["lockbox.payloadViewer", "ydb.editor"]
   }
 }
 """,

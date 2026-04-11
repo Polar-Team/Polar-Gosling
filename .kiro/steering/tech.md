@@ -5,6 +5,10 @@
 - Package manager: `uv`
 - Go (Gosling CLI)
 
+## Workspace
+
+All new code must be located under dev-new-features folder - .kiro setup folder and MCP folder is exception.
+
 ## Frameworks & Libraries
 - **FastAPI** + **uvicorn**: REST API (MotherGoose only)
 - **Celery** + **Kombu**: Async task queue (both services)

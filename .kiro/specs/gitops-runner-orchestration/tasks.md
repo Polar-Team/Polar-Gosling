@@ -1034,7 +1034,7 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
 
 ## Unified Single-Bucket Storage Model (Requirement 25)
 
-- [ ] 41. Update Gosling CLI init template for unified storage block
+- [x] 41. Update Gosling CLI init template for unified storage block
   - Update `defaultMotherGooseConfig()` in `internal/cli/init.go` to generate single-bucket storage block
   - Replace old 2-bucket format (state_bucket/binary_bucket sub-blocks) with unified format:
     ```

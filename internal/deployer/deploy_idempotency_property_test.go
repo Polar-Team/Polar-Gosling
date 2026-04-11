@@ -86,16 +86,8 @@ func runDeploySimulation(
 		ensureResource(existing, tracker, "database", mgCfg.Database.Name)
 	}
 
-	// Step 3: Storage buckets (stepStorageBuckets)
-	if mgCfg.Storage.StateBucket.Name != "" {
-		ensureResource(existing, tracker, "bucket", mgCfg.Storage.StateBucket.Name)
-	}
-	if mgCfg.Storage.BinaryBucket.Name != "" {
-		ensureResource(existing, tracker, "bucket", mgCfg.Storage.BinaryBucket.Name)
-	}
-	if mgCfg.Storage.BucketName != "" &&
-		mgCfg.Storage.StateBucket.Name == "" &&
-		mgCfg.Storage.BinaryBucket.Name == "" {
+	// Step 3: Storage bucket (unified single-bucket model)
+	if mgCfg.Storage.BucketName != "" {
 		ensureResource(existing, tracker, "bucket", mgCfg.Storage.BucketName)
 	}
 
@@ -182,14 +174,8 @@ func randomIdempotencyMGConfig(numQueues, numTriggers, numSAs int) *MGConfig {
 			ServerlessMode: true,
 		},
 		Storage: StorageConfig{
-			StateBucket: BucketConfig{
-				Name:       fmt.Sprintf("state-%d", rand.Intn(10000)),
-				Versioning: true,
-			},
-			BinaryBucket: BucketConfig{
-				Name:       fmt.Sprintf("bin-%d", rand.Intn(10000)),
-				Versioning: false,
-			},
+			BucketName: fmt.Sprintf("storage-%d", rand.Intn(10000)),
+			Region:     "ru-central1",
 		},
 	}
 

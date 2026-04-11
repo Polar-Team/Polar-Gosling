@@ -182,9 +182,8 @@ mothergoose "yandex-prod" {
   }
 
   storage {
-    state_bucket {
-      name = "polar-gosling-state"
-    }
+    bucket_name = "polar-gosling-storage"
+    region      = "ru-central1"
   }
 
   service_account "mg-sa" {

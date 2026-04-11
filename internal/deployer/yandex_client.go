@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -17,7 +18,6 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/polar-gosling/gosling/internal/spinner"
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/access"
@@ -295,58 +295,29 @@ func (c *YandexCloudClient) stepYDBDatabase(ctx context.Context, mgCfg *MGConfig
 // ---------------------------------------------------------------------------
 
 func (c *YandexCloudClient) stepStorageBuckets(ctx context.Context, mgCfg *MGConfig, _ *UFConfig) error {
-	s3c, err := c.newS3Client(ctx)
+	if mgCfg.Storage.BucketName == "" {
+		return nil
+	}
+
+	s3c, err := c.newS3Client(ctx, mgCfg.Storage.Region)
 	if err != nil {
 		return err
 	}
 
-	// Collect buckets to create: (name, versioning)
-	type bucket struct {
-		name       string
-		versioning bool
-	}
-	var buckets []bucket
-
-	// New structured format
-	if mgCfg.Storage.StateBucket.Name != "" {
-		buckets = append(buckets, bucket{mgCfg.Storage.StateBucket.Name, mgCfg.Storage.StateBucket.Versioning})
-	}
-	if mgCfg.Storage.BinaryBucket.Name != "" {
-		buckets = append(buckets, bucket{mgCfg.Storage.BinaryBucket.Name, mgCfg.Storage.BinaryBucket.Versioning})
-	}
-
-	// Legacy flat format fallback
-	if len(buckets) == 0 && mgCfg.Storage.BucketName != "" {
-		buckets = append(buckets, bucket{mgCfg.Storage.BucketName, true})
-	}
-
-	if len(buckets) == 0 {
-		return nil
-	}
-
-	for _, b := range buckets {
-		if err := c.ensureBucket(ctx, s3c, b.name); err != nil {
-			return err
-		}
-		if b.versioning {
-			_, err := s3c.PutBucketVersioning(ctx, &s3.PutBucketVersioningInput{
-				Bucket: aws.String(b.name),
-				VersioningConfiguration: &s3types.VersioningConfiguration{
-					Status: s3types.BucketVersioningStatusEnabled,
-				},
-			})
-			if err != nil {
-				return fmt.Errorf("enable versioning on %q: %w", b.name, err)
-			}
-		}
-	}
-	return nil
+	return c.ensureBucket(ctx, s3c, mgCfg.Storage.BucketName)
 }
 
 func (c *YandexCloudClient) ensureBucket(ctx context.Context, client *s3.Client, name string) error {
 	_, err := client.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: aws.String(name)})
 	if err == nil {
 		return nil
+	}
+	// Only attempt creation when the bucket genuinely does not exist.
+	// HeadBucket returns HTTP 404 / NoSuchBucket for missing buckets;
+	// any other error (403, timeout, throttle) should surface immediately.
+	var respErr interface{ HTTPStatusCode() int }
+	if ok := errors.As(err, &respErr); !ok || respErr.HTTPStatusCode() != http.StatusNotFound {
+		return fmt.Errorf("check bucket %q: %w", name, err)
 	}
 	_, err = client.CreateBucket(ctx, &s3.CreateBucketInput{Bucket: aws.String(name)})
 	if err != nil {
@@ -355,13 +326,19 @@ func (c *YandexCloudClient) ensureBucket(ctx context.Context, client *s3.Client,
 	return nil
 }
 
-func (c *YandexCloudClient) newS3Client(ctx context.Context) (*s3.Client, error) {
+func (c *YandexCloudClient) newS3Client(ctx context.Context, region string) (*s3.Client, error) {
+	if region == "" {
+		// Parser validation ensures region is set for parsed configs.
+		// This fallback guards against manually-constructed MGConfig in
+		// tests or internal packages, where region may be left empty.
+		region = "ru-central1"
+	}
 	tok, err := c.sdk.CreateIAMToken(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("IAM token for S3: %w", err)
 	}
 	cfg, err := awsconfig.LoadDefaultConfig(ctx,
-		awsconfig.WithRegion("ru-central1"),
+		awsconfig.WithRegion(region),
 		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(tok.IamToken, "", "")),
 	)
 	if err != nil {

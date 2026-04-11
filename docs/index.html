@@ -76,8 +76,10 @@
       padding: 0 2rem;
       display: flex; align-items: center; gap: 2rem; height: 56px;
     }
-    .nav-logo { font-weight: 700; font-size: 1.1rem; color: var(--text); display: flex; align-items: center; gap: 0.5rem; }
-    .nav-logo span { color: var(--accent); }
+    .nav-logo { font-weight: 700; font-size: 1.1rem; color: var(--text); display: flex; align-items: center; gap: 0.5rem;text-decoration: none;}
+    .nav-logo:hover { text-decoration: none; }
+    .nav-logo img{width:28px;height:28px;border-radius:6px;object-fit:contain}
+    .nav-logo span{color:var(--accent)}
     .nav-links { display: flex; gap: 1.5rem; margin-left: auto; }
     .nav-links a { color: var(--text-muted); font-size: 0.9rem; }
     .nav-links a:hover { color: var(--text); text-decoration: none; }
@@ -321,7 +323,10 @@
 </div>
 
 <nav class="nav">
-  <div class="nav-logo">🪿 Gosling <span>CLI</span></div>
+  <a class="nav-logo" href="index.html">
+    <img src="logo.png" alt="Gosling" />
+    🪿 Gosling <span>CLI</span>
+  </a>
   <div class="nav-links">
     <a href="#quickstart">Quickstart</a>
     <a href="#commands">Commands</a>

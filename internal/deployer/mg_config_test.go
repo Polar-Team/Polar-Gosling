@@ -52,20 +52,23 @@ mothergoose "yandex_prod" {
     service_account   = "mg-celery-sa"
   }
 
-  message_queue {
-    name               = "mg-tasks"
-    visibility_timeout = 30
-    message_retention  = 86400
-    max_message_size   = 262144
-    receive_wait_time  = 20
+  git_sync_trigger {
+    schedule        = "*/5 * * * *"
+    service_account = "mg-trigger-sa"
   }
 
-  trigger {
-    name            = "git-sync-trigger"
-    schedule        = "rate(5 minutes)"
-    endpoint        = "/internal/sync-git"
-    method          = "POST"
-    service_account = "mg-trigger-sa"
+  mothergoose_queues {
+    task_queue {
+      name               = "mg-tasks"
+      visibility_timeout = 30
+      message_retention  = 86400
+      max_message_size   = 262144
+      receive_wait_time  = 20
+    }
+    dlq {
+      name              = "mg-tasks-dlq"
+      message_retention = 86400
+    }
   }
 
   database {
@@ -187,17 +190,17 @@ func TestParseMGDirectory_SingleFile(t *testing.T) {
 	if mg.CeleryWorkers.Cores != 2 {
 		t.Errorf("expected celery_workers cores 2, got %d", mg.CeleryWorkers.Cores)
 	}
-	if len(mg.MessageQueues) != 1 {
-		t.Fatalf("expected 1 message queue, got %d", len(mg.MessageQueues))
+	if mg.Queues.TaskQueue.Name != "mg-tasks" {
+		t.Errorf("expected task queue name 'mg-tasks', got %q", mg.Queues.TaskQueue.Name)
 	}
-	if mg.MessageQueues[0].Name != "mg-tasks" {
-		t.Errorf("expected queue name 'mg-tasks', got %q", mg.MessageQueues[0].Name)
+	if mg.Queues.DLQ.Name != "mg-tasks-dlq" {
+		t.Errorf("expected dlq name 'mg-tasks-dlq', got %q", mg.Queues.DLQ.Name)
 	}
-	if len(mg.Triggers) != 1 {
-		t.Fatalf("expected 1 trigger, got %d", len(mg.Triggers))
+	if mg.GitSyncTrigger.Schedule != "*/5 * * * *" {
+		t.Errorf("expected git_sync_trigger schedule '*/5 * * * *', got %q", mg.GitSyncTrigger.Schedule)
 	}
-	if mg.Triggers[0].Schedule != "rate(5 minutes)" {
-		t.Errorf("expected trigger schedule 'rate(5 minutes)', got %q", mg.Triggers[0].Schedule)
+	if mg.GitSyncTrigger.ServiceAccount != "mg-trigger-sa" {
+		t.Errorf("expected git_sync_trigger service_account 'mg-trigger-sa', got %q", mg.GitSyncTrigger.ServiceAccount)
 	}
 	if mg.Database.ServerlessMode != true {
 		t.Error("expected database serverless_mode true")

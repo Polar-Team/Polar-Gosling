@@ -38,8 +38,15 @@ type ServerlessContainerConfig struct {
 	Environment      map[string]string
 }
 
-// MessageQueueConfig represents a message queue configuration
-type MessageQueueConfig struct {
+// GitSyncTriggerConfig holds the schedule settings for the built-in git-sync
+// cloud timer trigger. The endpoint and method are fixed (/internal/sync-git POST).
+type GitSyncTriggerConfig struct {
+	Schedule       string // cron expression, e.g. "*/5 * * * *"
+	ServiceAccount string // SA name used to invoke the container
+}
+
+// QueueConfig holds settings for a single SQS/YMQ queue.
+type QueueConfig struct {
 	Name              string
 	VisibilityTimeout int
 	MessageRetention  int
@@ -47,13 +54,11 @@ type MessageQueueConfig struct {
 	ReceiveWaitTime   int
 }
 
-// TriggerConfig represents a cloud trigger configuration
-type TriggerConfig struct {
-	Name           string
-	Schedule       string
-	Endpoint       string
-	Method         string
-	ServiceAccount string
+// MotherGooseQueuesConfig holds the task queue and its dead-letter queue settings.
+// The DLQ is always created first; the task queue references it via RedrivePolicy.
+type MotherGooseQueuesConfig struct {
+	TaskQueue QueueConfig
+	DLQ       QueueConfig
 }
 
 // DatabaseConfig represents database configuration
@@ -95,8 +100,8 @@ type MGConfig struct {
 	APIGateway      APIGatewayConfig
 	FastAPIApp      ServerlessContainerConfig
 	CeleryWorkers   ServerlessContainerConfig
-	MessageQueues   []MessageQueueConfig
-	Triggers        []TriggerConfig
+	GitSyncTrigger  GitSyncTriggerConfig
+	Queues          MotherGooseQueuesConfig
 	Database        DatabaseConfig
 	Storage         StorageConfig
 	ServiceAccounts []ServiceAccountConfig
@@ -244,20 +249,18 @@ func parseMGBlock(block *parser.Block) (*MGConfig, error) {
 		}
 	}
 
-	for _, mqBlock := range block.GetBlocks("message_queue") {
-		mq, err := parseMessageQueueBlock(&mqBlock)
+	if b, ok := block.GetBlock("git_sync_trigger"); ok {
+		mg.GitSyncTrigger, err = parseGitSyncTriggerBlock(b)
 		if err != nil {
-			return nil, fmt.Errorf("mothergoose %q message_queue: %w", mg.Name, err)
+			return nil, fmt.Errorf("mothergoose %q git_sync_trigger: %w", mg.Name, err)
 		}
-		mg.MessageQueues = append(mg.MessageQueues, mq)
 	}
 
-	for _, tBlock := range block.GetBlocks("trigger") {
-		t, err := parseTriggerBlock(&tBlock)
+	if b, ok := block.GetBlock("mothergoose_queues"); ok {
+		mg.Queues, err = parseMotherGooseQueuesBlock(b)
 		if err != nil {
-			return nil, fmt.Errorf("mothergoose %q trigger: %w", mg.Name, err)
+			return nil, fmt.Errorf("mothergoose %q mothergoose_queues: %w", mg.Name, err)
 		}
-		mg.Triggers = append(mg.Triggers, t)
 	}
 
 	if b, ok := block.GetBlock("database"); ok {
@@ -496,75 +499,14 @@ func parseServerlessContainerBlock(block *parser.Block) (ServerlessContainerConf
 	return sc, nil
 }
 
-func parseMessageQueueBlock(block *parser.Block) (MessageQueueConfig, error) {
-	mq := MessageQueueConfig{}
-	if v, ok := block.GetAttribute("name"); ok {
-		s, err := v.AsString()
-		if err != nil {
-			return mq, fmt.Errorf("invalid name: %w", err)
-		}
-		mq.Name = s
-	}
-	if v, ok := block.GetAttribute("visibility_timeout"); ok {
-		n, err := v.AsInt()
-		if err != nil {
-			return mq, fmt.Errorf("invalid visibility_timeout: %w", err)
-		}
-		mq.VisibilityTimeout = n
-	}
-	if v, ok := block.GetAttribute("message_retention"); ok {
-		n, err := v.AsInt()
-		if err != nil {
-			return mq, fmt.Errorf("invalid message_retention: %w", err)
-		}
-		mq.MessageRetention = n
-	}
-	if v, ok := block.GetAttribute("max_message_size"); ok {
-		n, err := v.AsInt()
-		if err != nil {
-			return mq, fmt.Errorf("invalid max_message_size: %w", err)
-		}
-		mq.MaxMessageSize = n
-	}
-	if v, ok := block.GetAttribute("receive_wait_time"); ok {
-		n, err := v.AsInt()
-		if err != nil {
-			return mq, fmt.Errorf("invalid receive_wait_time: %w", err)
-		}
-		mq.ReceiveWaitTime = n
-	}
-	return mq, nil
-}
-
-func parseTriggerBlock(block *parser.Block) (TriggerConfig, error) {
-	t := TriggerConfig{}
-	if v, ok := block.GetAttribute("name"); ok {
-		s, err := v.AsString()
-		if err != nil {
-			return t, fmt.Errorf("invalid name: %w", err)
-		}
-		t.Name = s
-	}
+func parseGitSyncTriggerBlock(block *parser.Block) (GitSyncTriggerConfig, error) {
+	t := GitSyncTriggerConfig{}
 	if v, ok := block.GetAttribute("schedule"); ok {
 		s, err := v.AsString()
 		if err != nil {
 			return t, fmt.Errorf("invalid schedule: %w", err)
 		}
 		t.Schedule = s
-	}
-	if v, ok := block.GetAttribute("endpoint"); ok {
-		s, err := v.AsString()
-		if err != nil {
-			return t, fmt.Errorf("invalid endpoint: %w", err)
-		}
-		t.Endpoint = s
-	}
-	if v, ok := block.GetAttribute("method"); ok {
-		s, err := v.AsString()
-		if err != nil {
-			return t, fmt.Errorf("invalid method: %w", err)
-		}
-		t.Method = s
 	}
 	if v, ok := block.GetAttribute("service_account"); ok {
 		s, err := v.AsString()
@@ -574,6 +516,65 @@ func parseTriggerBlock(block *parser.Block) (TriggerConfig, error) {
 		t.ServiceAccount = s
 	}
 	return t, nil
+}
+
+func parseQueueBlock(block *parser.Block) (QueueConfig, error) {
+	q := QueueConfig{}
+	if v, ok := block.GetAttribute("name"); ok {
+		s, err := v.AsString()
+		if err != nil {
+			return q, fmt.Errorf("invalid name: %w", err)
+		}
+		q.Name = s
+	}
+	if v, ok := block.GetAttribute("visibility_timeout"); ok {
+		n, err := v.AsInt()
+		if err != nil {
+			return q, fmt.Errorf("invalid visibility_timeout: %w", err)
+		}
+		q.VisibilityTimeout = n
+	}
+	if v, ok := block.GetAttribute("message_retention"); ok {
+		n, err := v.AsInt()
+		if err != nil {
+			return q, fmt.Errorf("invalid message_retention: %w", err)
+		}
+		q.MessageRetention = n
+	}
+	if v, ok := block.GetAttribute("max_message_size"); ok {
+		n, err := v.AsInt()
+		if err != nil {
+			return q, fmt.Errorf("invalid max_message_size: %w", err)
+		}
+		q.MaxMessageSize = n
+	}
+	if v, ok := block.GetAttribute("receive_wait_time"); ok {
+		n, err := v.AsInt()
+		if err != nil {
+			return q, fmt.Errorf("invalid receive_wait_time: %w", err)
+		}
+		q.ReceiveWaitTime = n
+	}
+	return q, nil
+}
+
+func parseMotherGooseQueuesBlock(block *parser.Block) (MotherGooseQueuesConfig, error) {
+	q := MotherGooseQueuesConfig{}
+	if b, ok := block.GetBlock("task_queue"); ok {
+		tq, err := parseQueueBlock(b)
+		if err != nil {
+			return q, fmt.Errorf("task_queue: %w", err)
+		}
+		q.TaskQueue = tq
+	}
+	if b, ok := block.GetBlock("dlq"); ok {
+		dlq, err := parseQueueBlock(b)
+		if err != nil {
+			return q, fmt.Errorf("dlq: %w", err)
+		}
+		q.DLQ = dlq
+	}
+	return q, nil
 }
 
 func parseDatabaseBlock(block *parser.Block) (DatabaseConfig, error) {
@@ -658,13 +659,19 @@ func parseBucketBlock(block *parser.Block) (BucketConfig, error) {
 
 func parseServiceAccountBlock(block *parser.Block) (ServiceAccountConfig, error) {
 	sa := ServiceAccountConfig{}
-	if v, ok := block.GetAttribute("name"); ok {
+
+	// Name comes from the block label: service_account "my-sa" { ... }
+	if len(block.Labels) > 0 {
+		sa.Name = block.Labels[0]
+	} else if v, ok := block.GetAttribute("name"); ok {
+		// Fallback: legacy flat attribute format
 		s, err := v.AsString()
 		if err != nil {
 			return sa, fmt.Errorf("invalid name: %w", err)
 		}
 		sa.Name = s
 	}
+
 	if v, ok := block.GetAttribute("description"); ok {
 		s, err := v.AsString()
 		if err != nil {

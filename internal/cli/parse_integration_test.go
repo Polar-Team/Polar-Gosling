@@ -165,87 +165,68 @@ eggsbucket "microservices-team" {
 		{
 			name: "mothergoose config",
 			content: `
-mothergoose {
+mothergoose "yandex-prod" {
+  cloud {
+    provider     = "yandex"
+    yc_folder_id = "b1gxxxxxxxxxxxxxxx"
+    yc_cloud_id  = "b1gyyyyyyyyyyyyyyy"
+  }
+
   api_gateway {
     name = "polar-gosling-api"
-    openapi_spec = "openapi.yaml"
   }
 
   fastapi_app {
-    name = "mothergoose-api"
-    runtime = "python312"
+    name   = "mothergoose-api"
     memory = 512
-    timeout = 30
   }
 
   celery_workers {
-    name = "mothergoose-celery"
-    runtime = "python312"
+    name   = "mothergoose-celery"
     memory = 1024
-    timeout = 300
   }
 
-  uglyfox_workers {
-    name = "uglyfox-celery"
-    runtime = "python312"
-    memory = 512
-    timeout = 180
+  git_sync_trigger {
+    schedule        = "*/5 * * * *"
+    service_account = "mg-sa"
   }
 
-  message_queues {
-    webhook_queue {
-      name = "mothergoose-webhooks"
-      visibility_timeout = 300
+  mothergoose_queues {
+    task_queue {
+      name               = "mg-tasks"
+      visibility_timeout = 30
+      message_retention  = 86400
     }
-
-    uglyfox_queue {
-      name = "uglyfox-tasks"
-      visibility_timeout = 180
-    }
-  }
-
-  triggers {
-    git_sync {
-      name = "git-sync-trigger"
-      schedule = "*/5 * * * *"
-      endpoint = "/internal/sync-git"
-    }
-
-    health_check {
-      name = "uglyfox-health-trigger"
-      schedule = "*/10 * * * *"
-      endpoint = "/internal/uglyfox/health-check"
+    dlq {
+      name              = "mg-tasks-dlq"
+      message_retention = 86400
     }
   }
 
   database {
     type = "ydb"
     name = "polar-gosling-db"
-    mode = "serverless"
   }
 
   storage {
     state_bucket {
-      name = "polar-gosling-state"
+      name       = "polar-gosling-state"
       versioning = true
     }
-
     binary_bucket {
-      name = "polar-gosling-binaries"
+      name       = "polar-gosling-binaries"
       versioning = false
     }
   }
 
-  service_accounts {
-    mothergoose {
-      name = "mothergoose-sa"
-      roles = ["lockbox.payloadViewer", "ydb.editor"]
-    }
+  service_account "mg-sa" {
+    description = "MotherGoose SA"
+    roles       = ["lockbox.payloadViewer", "ydb.editor"]
+  }
 
-    uglyfox {
-      name = "uglyfox-sa"
-      roles = ["lockbox.payloadViewer", "ydb.viewer"]
-    }
+  service_account "uf-sa" {
+    description = "UglyFox SA"
+    roles       = ["lockbox.payloadViewer"]
   }
 }
 `,

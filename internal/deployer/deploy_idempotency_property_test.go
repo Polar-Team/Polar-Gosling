@@ -3,7 +3,6 @@ package deployer
 import (
 	"fmt"
 	"math/rand"
-	"strings"
 	"testing"
 
 	"github.com/leanovate/gopter"
@@ -100,16 +99,12 @@ func runDeploySimulation(
 		ensureResource(existing, tracker, "bucket", mgCfg.Storage.BucketName)
 	}
 
-	// Step 4: Message queues — DLQs first, then mains (stepMessageQueues)
-	for _, mq := range mgCfg.MessageQueues {
-		if strings.HasSuffix(mq.Name, "-dlq") {
-			ensureResource(existing, tracker, "queue", mq.Name)
-		}
+	// Step 4: Message queues — DLQ first, then task queue (stepMessageQueues)
+	if mgCfg.Queues.DLQ.Name != "" {
+		ensureResource(existing, tracker, "queue", mgCfg.Queues.DLQ.Name)
 	}
-	for _, mq := range mgCfg.MessageQueues {
-		if !strings.HasSuffix(mq.Name, "-dlq") {
-			ensureResource(existing, tracker, "queue", mq.Name)
-		}
+	if mgCfg.Queues.TaskQueue.Name != "" {
+		ensureResource(existing, tracker, "queue", mgCfg.Queues.TaskQueue.Name)
 	}
 
 	// Step 5: Container registry (stepContainerRegistry)
@@ -133,9 +128,9 @@ func runDeploySimulation(
 		ensureResource(existing, tracker, "api_gateway", mgCfg.APIGateway.Name)
 	}
 
-	// Step 9: Timer triggers (stepTimerTriggers)
-	for _, t := range mgCfg.Triggers {
-		ensureResource(existing, tracker, "trigger", t.Name)
+	// Step 9: Git-sync timer trigger (stepTimerTriggers)
+	if mgCfg.GitSyncTrigger.Schedule != "" {
+		ensureResource(existing, tracker, "trigger", "git-sync")
 	}
 }
 
@@ -169,6 +164,21 @@ func randomIdempotencyMGConfig(numQueues, numTriggers, numSAs int) *MGConfig {
 			Memory: 1024,
 			Cores:  2,
 		},
+		GitSyncTrigger: GitSyncTriggerConfig{
+			Schedule:       "*/5 * * * *",
+			ServiceAccount: "mg-sa",
+		},
+		Queues: MotherGooseQueuesConfig{
+			TaskQueue: QueueConfig{
+				Name:              fmt.Sprintf("mg-tasks-%d", rand.Intn(10000)),
+				VisibilityTimeout: 30,
+				MessageRetention:  86400,
+			},
+			DLQ: QueueConfig{
+				Name:             fmt.Sprintf("mg-tasks-dlq-%d", rand.Intn(10000)),
+				MessageRetention: 86400,
+			},
+		},
 		Database: DatabaseConfig{
 			Name:           fmt.Sprintf("db-%d", rand.Intn(10000)),
 			Type:           "ydb",
@@ -186,20 +196,10 @@ func randomIdempotencyMGConfig(numQueues, numTriggers, numSAs int) *MGConfig {
 		},
 	}
 
-	for i := 0; i < numQueues; i++ {
-		mg.MessageQueues = append(mg.MessageQueues, MessageQueueConfig{
-			Name:              fmt.Sprintf("q-%d-%d", i, rand.Intn(10000)),
-			VisibilityTimeout: 30,
-			MessageRetention:  86400,
-		})
-	}
-	for i := 0; i < numTriggers; i++ {
-		mg.Triggers = append(mg.Triggers, TriggerConfig{
-			Name:     fmt.Sprintf("trig-%d-%d", i, rand.Intn(10000)),
-			Schedule: "rate(5 minutes)",
-			Endpoint: "/internal/sync-git",
-		})
-	}
+	// numQueues and numTriggers params kept for signature compat but no longer used
+	_ = numQueues
+	_ = numTriggers
+
 	for i := 0; i < numSAs; i++ {
 		mg.ServiceAccounts = append(mg.ServiceAccounts, ServiceAccountConfig{
 			Name:  fmt.Sprintf("sa-%d-%d", i, rand.Intn(10000)),
@@ -374,15 +374,10 @@ func TestDeployIdempotencyWithDLQQueues(t *testing.T) {
 		prop.ForAll(
 			func(numMainQueues int) bool {
 				mgCfg := randomIdempotencyMGConfig(0, 0, 1)
-				// Add DLQ + main queue pairs
-				mgCfg.MessageQueues = nil
-				for i := 0; i < numMainQueues; i++ {
-					dlqName := fmt.Sprintf("q-%d-dlq", i)
-					mainName := fmt.Sprintf("q-%d", i)
-					mgCfg.MessageQueues = append(mgCfg.MessageQueues,
-						MessageQueueConfig{Name: dlqName},
-						MessageQueueConfig{Name: mainName},
-					)
+				// Each iteration uses a fresh DLQ+task queue pair
+				mgCfg.Queues = MotherGooseQueuesConfig{
+					DLQ:       QueueConfig{Name: fmt.Sprintf("mg-tasks-dlq-%d", numMainQueues)},
+					TaskQueue: QueueConfig{Name: fmt.Sprintf("mg-tasks-%d", numMainQueues)},
 				}
 				ufCfg := randomIdempotencyUFConfig(false)
 
@@ -398,10 +393,10 @@ func TestDeployIdempotencyWithDLQQueues(t *testing.T) {
 					return false
 				}
 
-				// Verify all queues were reused
-				for _, mq := range mgCfg.MessageQueues {
-					if second.reused["queue/"+mq.Name] != 1 {
-						t.Logf("queue %q not reused", mq.Name)
+				// Verify both queues were reused
+				for _, name := range []string{mgCfg.Queues.DLQ.Name, mgCfg.Queues.TaskQueue.Name} {
+					if name != "" && second.reused["queue/"+name] != 1 {
+						t.Logf("queue %q not reused", name)
 						return false
 					}
 				}

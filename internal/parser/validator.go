@@ -295,19 +295,58 @@ func (v *Validator) validateUglyFoxBlock(block *Block) {
 
 // validateMotherGooseBlock validates a mothergoose configuration block
 func (v *Validator) validateMotherGooseBlock(block *Block) {
-	if len(block.Labels) > 0 {
-		v.result.AddError(block.Position, "labels", "mothergoose block should not have labels")
+	// mothergoose blocks carry a name label: mothergoose "instance-name" { ... }
+	if len(block.Labels) != 1 {
+		v.result.AddError(block.Position, "labels",
+			"mothergoose block must have exactly one label (the instance name)")
 	}
 
+	v.validateRequiredBlock(block, "cloud")
 	v.validateRequiredBlock(block, "api_gateway")
 	v.validateRequiredBlock(block, "fastapi_app")
 	v.validateRequiredBlock(block, "celery_workers")
-	v.validateRequiredBlock(block, "uglyfox_workers")
-	v.validateRequiredBlock(block, "message_queues")
-	v.validateRequiredBlock(block, "triggers")
+	v.validateRequiredBlock(block, "git_sync_trigger")
+	v.validateRequiredBlock(block, "mothergoose_queues")
 	v.validateRequiredBlock(block, "database")
 	v.validateRequiredBlock(block, "storage")
-	v.validateRequiredBlock(block, "service_accounts")
+
+	// service_account "name" { description = "..." roles = [...] }
+	sas := block.GetBlocks("service_account")
+	if len(sas) == 0 {
+		v.result.AddError(block.Position, "service_account",
+			"mothergoose block must have at least one 'service_account' block")
+	}
+	for _, sa := range sas {
+		v.validateServiceAccountBlock(&sa)
+	}
+}
+
+// validateServiceAccountBlock validates a labeled service_account block.
+func (v *Validator) validateServiceAccountBlock(block *Block) {
+	if len(block.Labels) != 1 {
+		v.result.AddError(block.Position, "labels",
+			"service_account block must have exactly one label (the account name)")
+		return
+	}
+	if !isValidIdentifier(block.Labels[0]) {
+		v.result.AddError(block.Position, "name",
+			fmt.Sprintf("invalid service account name %q: must start with a letter and contain only alphanumeric characters, hyphens, and underscores", block.Labels[0]))
+	}
+	rolesVal, ok := block.GetAttribute("roles")
+	if !ok {
+		v.result.AddError(block.Position, "roles",
+			"service_account block must have a 'roles' attribute")
+		return
+	}
+	rolesList, err := rolesVal.AsList()
+	if err != nil {
+		v.result.AddError(rolesVal.Position, "roles", "roles must be a list")
+		return
+	}
+	if len(rolesList) == 0 {
+		v.result.AddError(rolesVal.Position, "roles",
+			"service_account must have at least one role")
+	}
 }
 
 // validateRunnersConditionBlock validates a runners_condition configuration block

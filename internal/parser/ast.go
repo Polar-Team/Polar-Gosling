@@ -44,7 +44,7 @@ func (c *Config) String() string {
 // Block represents a configuration block (e.g., egg, job, uglyfox)
 type Block struct {
 	Position   Position
-	Type       string           // "egg", "job", "uglyfox", etc.
+	Type       string           // "egg", "job", "uglyfox","mothergoose" etc.
 	Labels     []string         // Block labels (e.g., ["my-app"] for egg "my-app")
 	Attributes map[string]Value // Direct attributes
 	Blocks     []Block          // Nested blocks

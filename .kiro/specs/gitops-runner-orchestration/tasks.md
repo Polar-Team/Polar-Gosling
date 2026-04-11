@@ -1047,63 +1047,55 @@ This implementation plan breaks down the GitOps Runner Orchestration system into
   - Verify `gosling init` generates valid MG/config.fly that parses without errors
   - _Requirements: 25.10, 25.11_
 
-- [ ] 42. Add legacy sub-bucket migration error to parseStorageBlock
-  - Update `parseStorageBlock()` in `internal/deployer/mg_config.go`
-  - Detect legacy sub-bucket nested blocks (`state_bucket`, `binary_bucket`) inside the storage block
-  - When legacy sub-blocks are detected, return a descriptive migration error message explaining the new single-bucket format
-  - The error message should include an example of the correct format with `bucket_name` and `region`
-  - Note: `parseStorageBlock()` already parses the new single-bucket format (BucketName + Region) — only the legacy detection needs to be added
-  - _Requirements: 25.14_
-
-- [ ] 43. Add static folder prefix constants
-  - [ ] 43.1 Add Go constants in Polar-Gosling codebase
+- [x] 42. Add static folder prefix constants
+  - [x] 42.1 Add Go constants in Polar-Gosling codebase
     - Create or update a constants file (e.g., `internal/deployer/storage_constants.go`)
     - Define constants: `StoragePrefixBinaries = "binaries/"`, `StoragePrefixStates = "states/"`, `StoragePrefixPluginCache = "plugin-cache/"`, `StoragePrefixRunnersCache = "runners-cache/"`
     - These are static hardcoded values, NOT configurable
     - _Requirements: 25.4, 25.5, 25.6, 25.7, 25.8_
-  - [ ] 43.2 Add Python constants in Polar-Gosling-Backends codebase
+  - [x] 42.2 Add Python constants in Polar-Gosling-Backends codebase
     - Create or update a constants module (e.g., `mothergoose/src/app/core/storage_constants.py`)
     - Define constants: `STORAGE_PREFIX_BINARIES = "binaries/"`, `STORAGE_PREFIX_STATES = "states/"`, `STORAGE_PREFIX_PLUGIN_CACHE = "plugin-cache/"`, `STORAGE_PREFIX_RUNNERS_CACHE = "runners-cache/"`
     - Update any existing code that hardcodes these paths to use the constants
     - _Requirements: 25.4, 25.5, 25.6, 25.7, 25.8_
 
-- [ ] 44. Update init template tests and parse integration tests
-  - [ ] 44.1 Update mg_config_test.go for single-bucket storage format
+- [ ] 43. Update init template tests and parse integration tests
+  - [ ] 43.1 Update mg_config_test.go for single-bucket storage format
     - Update test fixtures that reference old 2-bucket storage format (state_bucket, binary_bucket)
     - Replace with single-bucket format using `bucket_name` and `region` attributes
     - Add test case for legacy sub-bucket detection (expect migration error)
     - _Requirements: 25.12, 25.13, 25.14_
-  - [ ] 44.2 Update parse_integration_test.go for single-bucket storage format
+  - [ ] 43.2 Update parse_integration_test.go for single-bucket storage format
     - Update integration test .fly fixtures that reference old bucket names
     - Replace with single-bucket storage block format
     - Verify end-to-end parsing produces correct StorageConfig with BucketName and Region
     - _Requirements: 25.12, 25.13_
 
-- [ ] 45. Checkpoint - Unified storage model
+- [ ] 44. Checkpoint - Unified storage model
   - Ensure all Go tests pass (`go test ./...` in Polar-Gosling)
   - Ensure init template generates valid single-bucket config
   - Ensure legacy sub-bucket format produces descriptive migration error
   - Ensure static prefix constants are consistent between Go and Python
   - Ask the user if questions arise
 
-- [ ]* 46. Write property tests for unified storage model
-  - [ ]* 46.1 Write property test for storage config round-trip
+- [ ]* 45. Write property tests for unified storage model
+  - [ ]* 45.1 Write property test for storage config round-trip
     - **Property 49: Storage Config Round-Trip**
     - For any valid StorageConfig with bucket name and region, serializing to .fly and parsing back produces equivalent StorageConfig
     - **Validates: Requirements 25.1, 25.3, 25.12, 25.13**
-  - [ ]* 46.2 Write property test for legacy storage block rejection
+  - [ ]* 45.2 Write property test for legacy storage block rejection
     - **Property 50: Legacy Storage Block Rejection**
     - For any storage block containing legacy sub-bucket definitions, parser returns descriptive migration error
     - **Validates: Requirements 25.2, 25.14**
-  - [ ]* 46.3 Write property test for static folder prefix immutability
+  - [ ]* 45.3 Write property test for static folder prefix immutability
     - **Property 51: Static Folder Prefix Immutability**
     - For any StorageConfig, folder prefixes are always the hardcoded constants regardless of configuration content
     - **Validates: Requirements 25.4, 25.5, 25.6, 25.7, 25.8, 25.16**
-  - [ ]* 46.4 Write property test for init single-bucket generation
+  - [ ]* 45.4 Write property test for init single-bucket generation
     - **Property 52: Init Generates Single-Bucket Storage**
     - For any invocation of `gosling init`, generated storage block parses to valid single-bucket StorageConfig with only BucketName and Region
     - **Validates: Requirements 25.10, 25.11, 1.19**
-  - [ ]* 46.5 Write property test for DB-based active version path resolution
+  - [ ]* 45.5 Write property test for DB-based active version path resolution
     - **Property 53: DB-Based Active Version Path Resolution**
     - For any binary name and active version record, resolved path is `/mnt/s3-storage/binaries/{binary_name}/{version}/{binary_name}`
     - **Validates: Requirements 23.30, 25.15, 25.16**

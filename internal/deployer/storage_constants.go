@@ -1,5 +1,10 @@
 package deployer
 
+import "fmt"
+
+// S3MountPoint is the s3fs mount point for the unified storage bucket.
+const S3MountPoint = "/mnt/s3-storage"
+
 // Static folder prefix constants for the unified S3 storage bucket.
 // These are hardcoded values and MUST NOT be made configurable.
 // The bucket name itself is configured via MOTHERGOOSE_S3_BUCKET.
@@ -9,3 +14,9 @@ const (
 	StoragePrefixPluginCache  = "plugin-cache/"
 	StoragePrefixRunnersCache = "runners-cache/"
 )
+
+// ResolveBinaryPath returns the filesystem path for a binary version
+// on the mounted S3 bucket: /mnt/s3-storage/binaries/{binaryName}/{version}/{binaryName}
+func ResolveBinaryPath(binaryName, version string) string {
+	return fmt.Sprintf("%s/%s%s/%s/%s", S3MountPoint, StoragePrefixBinaries, binaryName, version, binaryName)
+}

@@ -156,9 +156,10 @@ func printBackendDryRun(mg *deployer.MGConfig, uf *deployer.UFConfig) {
 	}
 	fmt.Printf("  API Gateway:    %s\n", mg.APIGateway.Name)
 	fmt.Printf("  FastAPI App:    %s\n", mg.FastAPIApp.Name)
-	fmt.Printf("  Celery Workers: %s\n", mg.CeleryWorkers.Name)
-	fmt.Printf("  Message Queues: %d\n", len(mg.MessageQueues))
-	fmt.Printf("  Triggers:       %d\n", len(mg.Triggers))
+	fmt.Printf("  Task Queue:     %s\n", mg.Queues.TaskQueue.Name)
+	fmt.Printf("  DLQ:            %s\n", mg.Queues.DLQ.Name)
+	fmt.Printf("  Git Sync:       %s\n", mg.GitSyncTrigger.Schedule)
+	fmt.Printf("  Celery Memory:  %d MB (inherits image from FastAPI)\n", mg.CeleryWorkers.Memory)
 	fmt.Printf("  UF Instance:    %s\n", uf.Name)
 	fmt.Printf("  UF Workers:     %s\n", uf.Workers.Name)
 	fmt.Println("\n  No resources will be created")

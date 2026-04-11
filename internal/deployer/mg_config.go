@@ -25,21 +25,40 @@ type APIGatewayConfig struct {
 	ServiceAccount string
 }
 
-// ServerlessContainerConfig represents a serverless container configuration
+// ServerlessContainerConfig represents the main (FastAPI) serverless container.
+// Name, Image, and ServiceAccount are required — they identify the container.
 type ServerlessContainerConfig struct {
 	Name             string
 	Image            string
-	Memory           int
-	Cores            int
-	CoreFraction     int
-	ExecutionTimeout string
-	Concurrency      int
+	Memory           int    // MB: 128–8192 (YC) / 512–30720 (Fargate)
+	Cores            int    // vCPU: 0 means use core_fraction only (YC); 1/2/4/8 (Fargate)
+	CoreFraction     int    // % of vCPU: 5/10/20/50/100 (YC only); must be 1–100
+	ExecutionTimeout string // duration string, e.g. "300s"
+	Concurrency      int    // 1–16 (YC); ignored on Fargate
 	ServiceAccount   string
 	Environment      map[string]string
 }
 
-// MessageQueueConfig represents a message queue configuration
-type MessageQueueConfig struct {
+// CeleryWorkersConfig holds only the tunable resource settings for the Celery
+// worker container. Name, Image, and ServiceAccount are inherited from FastAPIApp
+// at deploy time — they share the same container image and SA.
+type CeleryWorkersConfig struct {
+	Memory           int // MB: same valid ranges as ServerlessContainerConfig
+	Cores            int
+	CoreFraction     int    // % of vCPU, 1–100
+	ExecutionTimeout string // duration string
+	Concurrency      int
+}
+
+// GitSyncTriggerConfig holds the schedule settings for the built-in git-sync
+// cloud timer trigger. The endpoint and method are fixed (/internal/sync-git POST).
+type GitSyncTriggerConfig struct {
+	Schedule       string // cron expression, e.g. "*/5 * * * *"
+	ServiceAccount string // SA name used to invoke the container
+}
+
+// QueueConfig holds settings for a single SQS/YMQ queue.
+type QueueConfig struct {
 	Name              string
 	VisibilityTimeout int
 	MessageRetention  int
@@ -47,13 +66,11 @@ type MessageQueueConfig struct {
 	ReceiveWaitTime   int
 }
 
-// TriggerConfig represents a cloud trigger configuration
-type TriggerConfig struct {
-	Name           string
-	Schedule       string
-	Endpoint       string
-	Method         string
-	ServiceAccount string
+// MotherGooseQueuesConfig holds the task queue and its dead-letter queue settings.
+// The DLQ is always created first; the task queue references it via RedrivePolicy.
+type MotherGooseQueuesConfig struct {
+	TaskQueue QueueConfig
+	DLQ       QueueConfig
 }
 
 // DatabaseConfig represents database configuration
@@ -94,9 +111,9 @@ type MGConfig struct {
 	ImageVersion    string // Container image version tag (default: "latest")
 	APIGateway      APIGatewayConfig
 	FastAPIApp      ServerlessContainerConfig
-	CeleryWorkers   ServerlessContainerConfig
-	MessageQueues   []MessageQueueConfig
-	Triggers        []TriggerConfig
+	CeleryWorkers   CeleryWorkersConfig
+	GitSyncTrigger  GitSyncTriggerConfig
+	Queues          MotherGooseQueuesConfig
 	Database        DatabaseConfig
 	Storage         StorageConfig
 	ServiceAccounts []ServiceAccountConfig
@@ -238,26 +255,24 @@ func parseMGBlock(block *parser.Block) (*MGConfig, error) {
 	}
 
 	if b, ok := block.GetBlock("celery_workers"); ok {
-		mg.CeleryWorkers, err = parseServerlessContainerBlock(b)
+		mg.CeleryWorkers, err = parseCeleryWorkersBlock(b)
 		if err != nil {
 			return nil, fmt.Errorf("mothergoose %q celery_workers: %w", mg.Name, err)
 		}
 	}
 
-	for _, mqBlock := range block.GetBlocks("message_queue") {
-		mq, err := parseMessageQueueBlock(&mqBlock)
+	if b, ok := block.GetBlock("git_sync_trigger"); ok {
+		mg.GitSyncTrigger, err = parseGitSyncTriggerBlock(b)
 		if err != nil {
-			return nil, fmt.Errorf("mothergoose %q message_queue: %w", mg.Name, err)
+			return nil, fmt.Errorf("mothergoose %q git_sync_trigger: %w", mg.Name, err)
 		}
-		mg.MessageQueues = append(mg.MessageQueues, mq)
 	}
 
-	for _, tBlock := range block.GetBlocks("trigger") {
-		t, err := parseTriggerBlock(&tBlock)
+	if b, ok := block.GetBlock("mothergoose_queues"); ok {
+		mg.Queues, err = parseMotherGooseQueuesBlock(b)
 		if err != nil {
-			return nil, fmt.Errorf("mothergoose %q trigger: %w", mg.Name, err)
+			return nil, fmt.Errorf("mothergoose %q mothergoose_queues: %w", mg.Name, err)
 		}
-		mg.Triggers = append(mg.Triggers, t)
 	}
 
 	if b, ok := block.GetBlock("database"); ok {
@@ -496,75 +511,54 @@ func parseServerlessContainerBlock(block *parser.Block) (ServerlessContainerConf
 	return sc, nil
 }
 
-func parseMessageQueueBlock(block *parser.Block) (MessageQueueConfig, error) {
-	mq := MessageQueueConfig{}
-	if v, ok := block.GetAttribute("name"); ok {
+func parseCeleryWorkersBlock(block *parser.Block) (CeleryWorkersConfig, error) {
+	c := CeleryWorkersConfig{}
+	if v, ok := block.GetAttribute("memory"); ok {
+		n, err := v.AsInt()
+		if err != nil {
+			return c, fmt.Errorf("invalid memory: %w", err)
+		}
+		c.Memory = n
+	}
+	if v, ok := block.GetAttribute("cores"); ok {
+		n, err := v.AsInt()
+		if err != nil {
+			return c, fmt.Errorf("invalid cores: %w", err)
+		}
+		c.Cores = n
+	}
+	if v, ok := block.GetAttribute("core_fraction"); ok {
+		n, err := v.AsInt()
+		if err != nil {
+			return c, fmt.Errorf("invalid core_fraction: %w", err)
+		}
+		c.CoreFraction = n
+	}
+	if v, ok := block.GetAttribute("execution_timeout"); ok {
 		s, err := v.AsString()
 		if err != nil {
-			return mq, fmt.Errorf("invalid name: %w", err)
+			return c, fmt.Errorf("invalid execution_timeout: %w", err)
 		}
-		mq.Name = s
+		c.ExecutionTimeout = s
 	}
-	if v, ok := block.GetAttribute("visibility_timeout"); ok {
+	if v, ok := block.GetAttribute("concurrency"); ok {
 		n, err := v.AsInt()
 		if err != nil {
-			return mq, fmt.Errorf("invalid visibility_timeout: %w", err)
+			return c, fmt.Errorf("invalid concurrency: %w", err)
 		}
-		mq.VisibilityTimeout = n
+		c.Concurrency = n
 	}
-	if v, ok := block.GetAttribute("message_retention"); ok {
-		n, err := v.AsInt()
-		if err != nil {
-			return mq, fmt.Errorf("invalid message_retention: %w", err)
-		}
-		mq.MessageRetention = n
-	}
-	if v, ok := block.GetAttribute("max_message_size"); ok {
-		n, err := v.AsInt()
-		if err != nil {
-			return mq, fmt.Errorf("invalid max_message_size: %w", err)
-		}
-		mq.MaxMessageSize = n
-	}
-	if v, ok := block.GetAttribute("receive_wait_time"); ok {
-		n, err := v.AsInt()
-		if err != nil {
-			return mq, fmt.Errorf("invalid receive_wait_time: %w", err)
-		}
-		mq.ReceiveWaitTime = n
-	}
-	return mq, nil
+	return c, nil
 }
 
-func parseTriggerBlock(block *parser.Block) (TriggerConfig, error) {
-	t := TriggerConfig{}
-	if v, ok := block.GetAttribute("name"); ok {
-		s, err := v.AsString()
-		if err != nil {
-			return t, fmt.Errorf("invalid name: %w", err)
-		}
-		t.Name = s
-	}
+func parseGitSyncTriggerBlock(block *parser.Block) (GitSyncTriggerConfig, error) {
+	t := GitSyncTriggerConfig{}
 	if v, ok := block.GetAttribute("schedule"); ok {
 		s, err := v.AsString()
 		if err != nil {
 			return t, fmt.Errorf("invalid schedule: %w", err)
 		}
 		t.Schedule = s
-	}
-	if v, ok := block.GetAttribute("endpoint"); ok {
-		s, err := v.AsString()
-		if err != nil {
-			return t, fmt.Errorf("invalid endpoint: %w", err)
-		}
-		t.Endpoint = s
-	}
-	if v, ok := block.GetAttribute("method"); ok {
-		s, err := v.AsString()
-		if err != nil {
-			return t, fmt.Errorf("invalid method: %w", err)
-		}
-		t.Method = s
 	}
 	if v, ok := block.GetAttribute("service_account"); ok {
 		s, err := v.AsString()
@@ -574,6 +568,65 @@ func parseTriggerBlock(block *parser.Block) (TriggerConfig, error) {
 		t.ServiceAccount = s
 	}
 	return t, nil
+}
+
+func parseQueueBlock(block *parser.Block) (QueueConfig, error) {
+	q := QueueConfig{}
+	if v, ok := block.GetAttribute("name"); ok {
+		s, err := v.AsString()
+		if err != nil {
+			return q, fmt.Errorf("invalid name: %w", err)
+		}
+		q.Name = s
+	}
+	if v, ok := block.GetAttribute("visibility_timeout"); ok {
+		n, err := v.AsInt()
+		if err != nil {
+			return q, fmt.Errorf("invalid visibility_timeout: %w", err)
+		}
+		q.VisibilityTimeout = n
+	}
+	if v, ok := block.GetAttribute("message_retention"); ok {
+		n, err := v.AsInt()
+		if err != nil {
+			return q, fmt.Errorf("invalid message_retention: %w", err)
+		}
+		q.MessageRetention = n
+	}
+	if v, ok := block.GetAttribute("max_message_size"); ok {
+		n, err := v.AsInt()
+		if err != nil {
+			return q, fmt.Errorf("invalid max_message_size: %w", err)
+		}
+		q.MaxMessageSize = n
+	}
+	if v, ok := block.GetAttribute("receive_wait_time"); ok {
+		n, err := v.AsInt()
+		if err != nil {
+			return q, fmt.Errorf("invalid receive_wait_time: %w", err)
+		}
+		q.ReceiveWaitTime = n
+	}
+	return q, nil
+}
+
+func parseMotherGooseQueuesBlock(block *parser.Block) (MotherGooseQueuesConfig, error) {
+	q := MotherGooseQueuesConfig{}
+	if b, ok := block.GetBlock("task_queue"); ok {
+		tq, err := parseQueueBlock(b)
+		if err != nil {
+			return q, fmt.Errorf("task_queue: %w", err)
+		}
+		q.TaskQueue = tq
+	}
+	if b, ok := block.GetBlock("dlq"); ok {
+		dlq, err := parseQueueBlock(b)
+		if err != nil {
+			return q, fmt.Errorf("dlq: %w", err)
+		}
+		q.DLQ = dlq
+	}
+	return q, nil
 }
 
 func parseDatabaseBlock(block *parser.Block) (DatabaseConfig, error) {
@@ -658,13 +711,19 @@ func parseBucketBlock(block *parser.Block) (BucketConfig, error) {
 
 func parseServiceAccountBlock(block *parser.Block) (ServiceAccountConfig, error) {
 	sa := ServiceAccountConfig{}
-	if v, ok := block.GetAttribute("name"); ok {
+
+	// Name comes from the block label: service_account "my-sa" { ... }
+	if len(block.Labels) > 0 {
+		sa.Name = block.Labels[0]
+	} else if v, ok := block.GetAttribute("name"); ok {
+		// Fallback: legacy flat attribute format
 		s, err := v.AsString()
 		if err != nil {
 			return sa, fmt.Errorf("invalid name: %w", err)
 		}
 		sa.Name = s
 	}
+
 	if v, ok := block.GetAttribute("description"); ok {
 		s, err := v.AsString()
 		if err != nil {

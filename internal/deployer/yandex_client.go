@@ -1,10 +1,14 @@
 package deployer
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -27,6 +31,13 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
+// serviceAccountInfo holds the resolved cloud ID and the roles bound to a service account.
+type serviceAccountInfo struct {
+	Name  string
+	ID    string
+	Roles []string
+}
+
 // YandexCloudClient wraps the Yandex Cloud Go SDK for deploying backend infrastructure.
 // Individual runner deployment is handled by MotherGoose using OpenTofu.
 type YandexCloudClient struct {
@@ -35,12 +46,12 @@ type YandexCloudClient struct {
 	cloudID  string
 
 	// Populated during deployment for cross-step references
-	serviceAccountIDs map[string]string // name → ID
-	databaseEndpoint  string
-	registryID        string
-	mgContainerID     string
-	mgContainerURL    string
-	apiGatewayURL     string
+	serviceAccounts  []serviceAccountInfo // resolved SA entries (ID + bound roles)
+	databaseEndpoint string
+	registryID       string
+	mgContainerID    string
+	mgContainerURL   string
+	apiGatewayURL    string
 }
 
 // NewYandexCloudClient creates a new Yandex Cloud client.
@@ -52,10 +63,9 @@ func NewYandexCloudClient(ctx context.Context, folderID, cloudID string) (*Yande
 		return nil, fmt.Errorf("failed to create Yandex Cloud SDK: %w", err)
 	}
 	return &YandexCloudClient{
-		sdk:               sdk,
-		folderID:          folderID,
-		cloudID:           cloudID,
-		serviceAccountIDs: make(map[string]string),
+		sdk:      sdk,
+		folderID: folderID,
+		cloudID:  cloudID,
 	}, nil
 }
 
@@ -86,6 +96,17 @@ func (c *YandexCloudClient) DeployBackendInfrastructure(ctx context.Context, mgC
 	return nil
 }
 
+// saIDByName returns the cloud ID for the service account with the given name,
+// or an empty string if not found.
+func (c *YandexCloudClient) saIDByName(name string) string {
+	for _, sa := range c.serviceAccounts {
+		if sa.Name == name {
+			return sa.ID
+		}
+	}
+	return ""
+}
+
 // GetStatus retrieves the status of infrastructure resources.
 func (c *YandexCloudClient) GetStatus(_ context.Context, _ string) (string, error) {
 	return "", fmt.Errorf("not yet implemented")
@@ -105,42 +126,98 @@ func (c *YandexCloudClient) stepServiceAccounts(ctx context.Context, mgCfg *MGCo
 		if err != nil {
 			return fmt.Errorf("service account %q: %w", sa.Name, err)
 		}
-		c.serviceAccountIDs[sa.Name] = id
 		if err := c.ensureRoleBindings(ctx, id, sa.Roles); err != nil {
 			return fmt.Errorf("roles for %q: %w", sa.Name, err)
 		}
+		c.serviceAccounts = append(c.serviceAccounts, serviceAccountInfo{
+			Name:  sa.Name,
+			ID:    id,
+			Roles: sa.Roles,
+		})
 	}
 	return nil
 }
 
 func (c *YandexCloudClient) ensureServiceAccount(ctx context.Context, sa ServiceAccountConfig) (string, error) {
+	// List all SAs whose name starts with the config name as a prefix (e.g. "mg-sa-")
 	resp, err := c.sdk.IAM().ServiceAccount().List(ctx, &iam.ListServiceAccountsRequest{
 		FolderId: c.folderID,
-		Filter:   fmt.Sprintf(`name = "%s"`, sa.Name),
 	})
 	if err != nil {
 		return "", fmt.Errorf("list: %w", err)
 	}
-	if len(resp.ServiceAccounts) > 0 {
-		return resp.ServiceAccounts[0].Id, nil
+
+	prefix := sa.Name + "-"
+	var matches []*iam.ServiceAccount
+	for _, existing := range resp.ServiceAccounts {
+		if strings.HasPrefix(existing.Name, prefix) {
+			matches = append(matches, existing)
+		}
 	}
 
-	op, err := c.sdk.WrapOperation(c.sdk.IAM().ServiceAccount().Create(ctx, &iam.CreateServiceAccountRequest{
-		FolderId:    c.folderID,
-		Name:        sa.Name,
-		Description: sa.Description,
-	}))
-	if err != nil {
-		return "", fmt.Errorf("create: %w", err)
+	switch len(matches) {
+	case 0:
+		// None found — create a new one with a 5-char random postfix
+		postfix, err := randomHex(5)
+		if err != nil {
+			return "", fmt.Errorf("generate postfix: %w", err)
+		}
+		fullName := prefix + postfix
+		op, err := c.sdk.WrapOperation(c.sdk.IAM().ServiceAccount().Create(ctx, &iam.CreateServiceAccountRequest{
+			FolderId:    c.folderID,
+			Name:        fullName,
+			Description: sa.Description,
+		}))
+		if err != nil {
+			return "", fmt.Errorf("create: %w", err)
+		}
+		if err := op.Wait(ctx); err != nil {
+			return "", fmt.Errorf("wait: %w", err)
+		}
+		res, err := op.Response()
+		if err != nil {
+			return "", fmt.Errorf("response: %w", err)
+		}
+		return res.(*iam.ServiceAccount).Id, nil
+
+	case 1:
+		// Exactly one match — reuse it
+		return matches[0].Id, nil
+
+	default:
+		// Multiple matches — ask the user to pick one
+		return promptUserPickSA(sa.Name, matches)
 	}
-	if err := op.Wait(ctx); err != nil {
-		return "", fmt.Errorf("wait: %w", err)
+}
+
+// randomHex returns n random hex characters (n bytes → 2n hex chars, truncated to n).
+func randomHex(n int) (string, error) {
+	b := make([]byte, (n+1)/2)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
 	}
-	res, err := op.Response()
-	if err != nil {
-		return "", fmt.Errorf("response: %w", err)
+	return hex.EncodeToString(b)[:n], nil
+}
+
+// promptUserPickSA prints the duplicate SA list and asks the user to choose one interactively.
+func promptUserPickSA(configName string, matches []*iam.ServiceAccount) (string, error) {
+	fmt.Fprintf(os.Stderr, "\nMultiple service accounts found with prefix %q:\n", configName+"-")
+	for i, sa := range matches {
+		fmt.Fprintf(os.Stderr, "  [%d] %s  (id: %s)\n", i+1, sa.Name, sa.Id)
 	}
-	return res.(*iam.ServiceAccount).Id, nil
+	fmt.Fprintf(os.Stderr, "Enter number to use: ")
+
+	scanner := bufio.NewScanner(os.Stdin)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		var choice int
+		if _, err := fmt.Sscanf(line, "%d", &choice); err != nil || choice < 1 || choice > len(matches) {
+			fmt.Fprintf(os.Stderr, "Invalid choice, enter 1-%d: ", len(matches))
+			continue
+		}
+		return matches[choice-1].Id, nil
+	}
+	return "", fmt.Errorf("no selection made for service account %q", configName)
 }
 
 func (c *YandexCloudClient) ensureRoleBindings(ctx context.Context, saID string, roles []string) error {
@@ -301,40 +378,28 @@ func (c *YandexCloudClient) newS3Client(ctx context.Context) (*s3.Client, error)
 // ---------------------------------------------------------------------------
 
 func (c *YandexCloudClient) stepMessageQueues(ctx context.Context, mgCfg *MGConfig, _ *UFConfig) error {
-	if len(mgCfg.MessageQueues) == 0 {
-		return nil
-	}
 	sqsc, err := c.newSQSClient(ctx)
 	if err != nil {
 		return err
 	}
 
-	// Separate DLQ queues (create first) from main queues
-	var dlqs, mains []MessageQueueConfig
-	dlqURLs := map[string]string{}
-	for _, mq := range mgCfg.MessageQueues {
-		if strings.HasSuffix(mq.Name, "-dlq") {
-			dlqs = append(dlqs, mq)
-		} else {
-			mains = append(mains, mq)
-		}
-	}
-	for _, mq := range dlqs {
-		url, err := c.ensureQueue(ctx, sqsc, mq, "")
+	// Create DLQ first, then task queue referencing it
+	dlqURL := ""
+	if mgCfg.Queues.DLQ.Name != "" {
+		dlqURL, err = c.ensureQueue(ctx, sqsc, mgCfg.Queues.DLQ, "")
 		if err != nil {
-			return err
+			return fmt.Errorf("dlq: %w", err)
 		}
-		dlqURLs[mq.Name] = url
 	}
-	for _, mq := range mains {
-		if _, err := c.ensureQueue(ctx, sqsc, mq, dlqURLs[mq.Name+"-dlq"]); err != nil {
-			return err
+	if mgCfg.Queues.TaskQueue.Name != "" {
+		if _, err := c.ensureQueue(ctx, sqsc, mgCfg.Queues.TaskQueue, dlqURL); err != nil {
+			return fmt.Errorf("task queue: %w", err)
 		}
 	}
 	return nil
 }
 
-func (c *YandexCloudClient) ensureQueue(ctx context.Context, client *sqs.Client, mq MessageQueueConfig, dlqURL string) (string, error) {
+func (c *YandexCloudClient) ensureQueue(ctx context.Context, client *sqs.Client, mq QueueConfig, dlqURL string) (string, error) {
 	existing, err := client.GetQueueUrl(ctx, &sqs.GetQueueUrlInput{QueueName: aws.String(mq.Name)})
 	if err == nil && existing.QueueUrl != nil {
 		return *existing.QueueUrl, nil
@@ -441,9 +506,7 @@ func (c *YandexCloudClient) pushImages(ctx context.Context, mgCfg *MGConfig, ufC
 	if mgCfg.FastAPIApp.Image == "" {
 		mgCfg.FastAPIApp.Image = mgTarget
 	}
-	if mgCfg.CeleryWorkers.Image == "" {
-		mgCfg.CeleryWorkers.Image = mgTarget
-	}
+	// CeleryWorkers inherits image from FastAPIApp — no separate image field
 	if ufCfg != nil && ufCfg.Workers.Image == "" {
 		ufCfg.Workers.Image = ufTarget
 	}
@@ -479,7 +542,22 @@ func (c *YandexCloudClient) stepMGContainers(ctx context.Context, mgCfg *MGConfi
 	c.mgContainerID = id
 	c.mgContainerURL = url
 
-	if _, _, err := c.deployContainer(ctx, mgCfg.CeleryWorkers); err != nil {
+	// Celery workers share the same image, name prefix, and SA as FastAPIApp
+	celeryContainer := ServerlessContainerConfig{
+		Name:             mgCfg.FastAPIApp.Name + "-celery",
+		Image:            mgCfg.FastAPIApp.Image,
+		ServiceAccount:   mgCfg.FastAPIApp.ServiceAccount,
+		Memory:           mgCfg.CeleryWorkers.Memory,
+		Cores:            mgCfg.CeleryWorkers.Cores,
+		CoreFraction:     mgCfg.CeleryWorkers.CoreFraction,
+		ExecutionTimeout: mgCfg.CeleryWorkers.ExecutionTimeout,
+		Concurrency:      mgCfg.CeleryWorkers.Concurrency,
+		Environment:      mgCfg.FastAPIApp.Environment,
+	}
+	if celeryContainer.Memory == 0 {
+		celeryContainer.Memory = mgCfg.FastAPIApp.Memory
+	}
+	if _, _, err := c.deployContainer(ctx, celeryContainer); err != nil {
 		return fmt.Errorf("celery container: %w", err)
 	}
 	return nil
@@ -533,7 +611,7 @@ func (c *YandexCloudClient) deployContainer(ctx context.Context, cfg ServerlessC
 	if cfg.CoreFraction > 0 {
 		req.Resources.CoreFraction = int64(cfg.CoreFraction)
 	}
-	if saID := c.serviceAccountIDs[cfg.ServiceAccount]; saID != "" {
+	if saID := c.saIDByName(cfg.ServiceAccount); saID != "" {
 		req.ServiceAccountId = saID
 	}
 	if cfg.Concurrency > 0 {
@@ -618,7 +696,7 @@ func (c *YandexCloudClient) stepAPIGateway(ctx context.Context, mgCfg *MGConfig,
 
 	specYAML := c.generateOpenAPISpec(mgCfg)
 
-	saID := c.serviceAccountIDs[mgCfg.APIGateway.ServiceAccount]
+	saID := c.saIDByName(mgCfg.APIGateway.ServiceAccount)
 	op, err := c.sdk.WrapOperation(c.sdk.Serverless().APIGateway().ApiGateway().Create(ctx, &apigwpb.CreateApiGatewayRequest{
 		FolderId:    c.folderID,
 		Name:        mgCfg.APIGateway.Name,
@@ -647,7 +725,7 @@ func (c *YandexCloudClient) stepAPIGateway(ctx context.Context, mgCfg *MGConfig,
 // generateOpenAPISpec builds an OpenAPI 3.0 spec that routes webhook and
 // internal endpoints to the MotherGoose serverless container.
 func (c *YandexCloudClient) generateOpenAPISpec(mgCfg *MGConfig) string {
-	saID := c.serviceAccountIDs[mgCfg.FastAPIApp.ServiceAccount]
+	saID := c.saIDByName(mgCfg.FastAPIApp.ServiceAccount)
 
 	return fmt.Sprintf(`openapi: 3.0.0
 info:
@@ -747,12 +825,14 @@ paths:
 // ---------------------------------------------------------------------------
 
 func (c *YandexCloudClient) stepTimerTriggers(ctx context.Context, mgCfg *MGConfig, _ *UFConfig) error {
-	if len(mgCfg.Triggers) == 0 {
+	tCfg := mgCfg.GitSyncTrigger
+	if tCfg.Schedule == "" {
 		return nil
 	}
 
-	// Fetch existing triggers for idempotency
-	existing := map[string]bool{}
+	const triggerName = "git-sync"
+
+	// Idempotent: skip if already exists
 	list, err := c.sdk.Serverless().Triggers().Trigger().List(ctx, &triggerspb.ListTriggersRequest{
 		FolderId: c.folderID,
 	})
@@ -760,48 +840,41 @@ func (c *YandexCloudClient) stepTimerTriggers(ctx context.Context, mgCfg *MGConf
 		return fmt.Errorf("list triggers: %w", err)
 	}
 	for _, t := range list.Triggers {
-		existing[t.Name] = true
+		if t.Name == triggerName {
+			return nil
+		}
 	}
 
-	for _, tCfg := range mgCfg.Triggers {
-		if existing[tCfg.Name] {
-			continue
+	saID := c.saIDByName(tCfg.ServiceAccount)
+	if saID == "" {
+		for _, info := range c.serviceAccounts {
+			saID = info.ID
+			break
 		}
-		saID := c.serviceAccountIDs[tCfg.ServiceAccount]
-		if saID == "" {
-			// Fallback to first available SA
-			for _, id := range c.serviceAccountIDs {
-				saID = id
-				break
-			}
-		}
+	}
 
-		op, err := c.sdk.WrapOperation(c.sdk.Serverless().Triggers().Trigger().Create(ctx, &triggerspb.CreateTriggerRequest{
-			FolderId: c.folderID,
-			Name:     tCfg.Name,
-			Rule: &triggerspb.Trigger_Rule{
-				Rule: &triggerspb.Trigger_Rule_Timer{
-					Timer: &triggerspb.Trigger_Timer{
-						CronExpression: tCfg.Schedule,
-						Action: &triggerspb.Trigger_Timer_InvokeContainerWithRetry{
-							InvokeContainerWithRetry: &triggerspb.InvokeContainerWithRetry{
-								ContainerId:      c.mgContainerID,
-								Path:             tCfg.Endpoint,
-								ServiceAccountId: saID,
-							},
+	op, err := c.sdk.WrapOperation(c.sdk.Serverless().Triggers().Trigger().Create(ctx, &triggerspb.CreateTriggerRequest{
+		FolderId: c.folderID,
+		Name:     triggerName,
+		Rule: &triggerspb.Trigger_Rule{
+			Rule: &triggerspb.Trigger_Rule_Timer{
+				Timer: &triggerspb.Trigger_Timer{
+					CronExpression: tCfg.Schedule,
+					Action: &triggerspb.Trigger_Timer_InvokeContainerWithRetry{
+						InvokeContainerWithRetry: &triggerspb.InvokeContainerWithRetry{
+							ContainerId:      c.mgContainerID,
+							Path:             "/internal/sync-git",
+							ServiceAccountId: saID,
 						},
 					},
 				},
 			},
-		}))
-		if err != nil {
-			return fmt.Errorf("create trigger %q: %w", tCfg.Name, err)
-		}
-		if err := op.Wait(ctx); err != nil {
-			return fmt.Errorf("wait trigger %q: %w", tCfg.Name, err)
-		}
+		},
+	}))
+	if err != nil {
+		return fmt.Errorf("create git-sync trigger: %w", err)
 	}
-	return nil
+	return op.Wait(ctx)
 }
 
 // ---------------------------------------------------------------------------

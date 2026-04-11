@@ -295,19 +295,142 @@ func (v *Validator) validateUglyFoxBlock(block *Block) {
 
 // validateMotherGooseBlock validates a mothergoose configuration block
 func (v *Validator) validateMotherGooseBlock(block *Block) {
-	if len(block.Labels) > 0 {
-		v.result.AddError(block.Position, "labels", "mothergoose block should not have labels")
+	// mothergoose blocks carry a name label: mothergoose "instance-name" { ... }
+	if len(block.Labels) != 1 {
+		v.result.AddError(block.Position, "labels",
+			"mothergoose block must have exactly one label (the instance name)")
 	}
 
-	v.validateRequiredBlock(block, "api_gateway")
-	v.validateRequiredBlock(block, "fastapi_app")
-	v.validateRequiredBlock(block, "celery_workers")
-	v.validateRequiredBlock(block, "uglyfox_workers")
-	v.validateRequiredBlock(block, "message_queues")
-	v.validateRequiredBlock(block, "triggers")
+	v.validateRequiredBlock(block, "cloud")
+
+	// api_gateway and fastapi_app must appear exactly once
+	v.validateUniqueBlock(block, "api_gateway")
+	v.validateUniqueBlock(block, "fastapi_app")
+	v.validateUniqueBlock(block, "celery_workers")
+
+	v.validateRequiredBlock(block, "git_sync_trigger")
+	v.validateRequiredBlock(block, "mothergoose_queues")
 	v.validateRequiredBlock(block, "database")
 	v.validateRequiredBlock(block, "storage")
-	v.validateRequiredBlock(block, "service_accounts")
+
+	// Validate container resource settings
+	if b, ok := block.GetBlock("fastapi_app"); ok {
+		v.validateContainerResourcesBlock(b, "fastapi_app")
+	}
+	if b, ok := block.GetBlock("celery_workers"); ok {
+		v.validateContainerResourcesBlock(b, "celery_workers")
+	}
+
+	// service_account "name" { description = "..." roles = [...] }
+	sas := block.GetBlocks("service_account")
+	if len(sas) == 0 {
+		v.result.AddError(block.Position, "service_account",
+			"mothergoose block must have at least one 'service_account' block")
+	}
+	for _, sa := range sas {
+		v.validateServiceAccountBlock(&sa)
+	}
+}
+
+// validateUniqueBlock checks that a block type appears exactly once.
+func (v *Validator) validateUniqueBlock(block *Block, blockType string) {
+	all := block.GetBlocks(blockType)
+	switch len(all) {
+	case 0:
+		v.result.AddError(block.Position, blockType,
+			fmt.Sprintf("%s block must have a '%s' nested block", block.Type, blockType))
+	case 1:
+		// ok
+	default:
+		v.result.AddError(block.Position, blockType,
+			fmt.Sprintf("%s block must have exactly one '%s' block, found %d", block.Type, blockType, len(all)))
+	}
+}
+
+// validateContainerResourcesBlock validates memory/cores/core_fraction/concurrency
+// against Yandex Serverless Containers and AWS ECS Fargate limits.
+//
+// Yandex Serverless Containers:
+//   - memory:        128–8192 MB
+//   - cores:         0–4 vCPU (0 = fraction-only)
+//   - core_fraction: 5/10/20/50/100 (must be 1–100)
+//   - concurrency:   1–16
+//
+// AWS ECS Fargate CPU (units) / memory (MB) valid pairs:
+//
+//	256  → 512–2048
+//	512  → 1024–4096
+//	1024 → 2048–8192
+//	2048 → 4096–16384
+//	4096 → 8192–30720
+func (v *Validator) validateContainerResourcesBlock(block *Block, blockName string) {
+	if memVal, ok := block.GetAttribute("memory"); ok {
+		mem, err := memVal.AsInt()
+		if err != nil {
+			v.result.AddError(memVal.Position, "memory", "memory must be a number")
+		} else if mem < 128 || mem > 30720 {
+			v.result.AddError(memVal.Position, "memory",
+				fmt.Sprintf("%s memory must be between 128 MB and 30720 MB, got %d", blockName, mem))
+		}
+	}
+
+	if coresVal, ok := block.GetAttribute("cores"); ok {
+		cores, err := coresVal.AsInt()
+		if err != nil {
+			v.result.AddError(coresVal.Position, "cores", "cores must be a number")
+		} else if cores < 0 || cores > 8 {
+			v.result.AddError(coresVal.Position, "cores",
+				fmt.Sprintf("%s cores must be between 0 and 8, got %d", blockName, cores))
+		}
+	}
+
+	if cfVal, ok := block.GetAttribute("core_fraction"); ok {
+		cf, err := cfVal.AsInt()
+		if err != nil {
+			v.result.AddError(cfVal.Position, "core_fraction", "core_fraction must be a number")
+		} else if cf < 1 || cf > 100 {
+			v.result.AddError(cfVal.Position, "core_fraction",
+				fmt.Sprintf("%s core_fraction is a percentage and must be between 1 and 100, got %d", blockName, cf))
+		}
+	}
+
+	if concVal, ok := block.GetAttribute("concurrency"); ok {
+		conc, err := concVal.AsInt()
+		if err != nil {
+			v.result.AddError(concVal.Position, "concurrency", "concurrency must be a number")
+		} else if conc < 1 || conc > 16 {
+			v.result.AddError(concVal.Position, "concurrency",
+				fmt.Sprintf("%s concurrency must be between 1 and 16, got %d", blockName, conc))
+		}
+	}
+}
+
+// validateServiceAccountBlock validates a labeled service_account block.
+func (v *Validator) validateServiceAccountBlock(block *Block) {
+	if len(block.Labels) != 1 {
+		v.result.AddError(block.Position, "labels",
+			"service_account block must have exactly one label (the account name)")
+		return
+	}
+	if !isValidIdentifier(block.Labels[0]) {
+		v.result.AddError(block.Position, "name",
+			fmt.Sprintf("invalid service account name %q: must start with a letter and contain only alphanumeric characters, hyphens, and underscores", block.Labels[0]))
+	}
+	rolesVal, ok := block.GetAttribute("roles")
+	if !ok {
+		v.result.AddError(block.Position, "roles",
+			"service_account block must have a 'roles' attribute")
+		return
+	}
+	rolesList, err := rolesVal.AsList()
+	if err != nil {
+		v.result.AddError(rolesVal.Position, "roles", "roles must be a list")
+		return
+	}
+	if len(rolesList) == 0 {
+		v.result.AddError(rolesVal.Position, "roles",
+			"service_account must have at least one role")
+	}
 }
 
 // validateRunnersConditionBlock validates a runners_condition configuration block

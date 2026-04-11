@@ -25,17 +25,29 @@ type APIGatewayConfig struct {
 	ServiceAccount string
 }
 
-// ServerlessContainerConfig represents a serverless container configuration
+// ServerlessContainerConfig represents the main (FastAPI) serverless container.
+// Name, Image, and ServiceAccount are required — they identify the container.
 type ServerlessContainerConfig struct {
 	Name             string
 	Image            string
-	Memory           int
-	Cores            int
-	CoreFraction     int
-	ExecutionTimeout string
-	Concurrency      int
+	Memory           int    // MB: 128–8192 (YC) / 512–30720 (Fargate)
+	Cores            int    // vCPU: 0 means use core_fraction only (YC); 1/2/4/8 (Fargate)
+	CoreFraction     int    // % of vCPU: 5/10/20/50/100 (YC only); must be 1–100
+	ExecutionTimeout string // duration string, e.g. "300s"
+	Concurrency      int    // 1–16 (YC); ignored on Fargate
 	ServiceAccount   string
 	Environment      map[string]string
+}
+
+// CeleryWorkersConfig holds only the tunable resource settings for the Celery
+// worker container. Name, Image, and ServiceAccount are inherited from FastAPIApp
+// at deploy time — they share the same container image and SA.
+type CeleryWorkersConfig struct {
+	Memory           int // MB: same valid ranges as ServerlessContainerConfig
+	Cores            int
+	CoreFraction     int    // % of vCPU, 1–100
+	ExecutionTimeout string // duration string
+	Concurrency      int
 }
 
 // GitSyncTriggerConfig holds the schedule settings for the built-in git-sync
@@ -99,7 +111,7 @@ type MGConfig struct {
 	ImageVersion    string // Container image version tag (default: "latest")
 	APIGateway      APIGatewayConfig
 	FastAPIApp      ServerlessContainerConfig
-	CeleryWorkers   ServerlessContainerConfig
+	CeleryWorkers   CeleryWorkersConfig
 	GitSyncTrigger  GitSyncTriggerConfig
 	Queues          MotherGooseQueuesConfig
 	Database        DatabaseConfig
@@ -243,7 +255,7 @@ func parseMGBlock(block *parser.Block) (*MGConfig, error) {
 	}
 
 	if b, ok := block.GetBlock("celery_workers"); ok {
-		mg.CeleryWorkers, err = parseServerlessContainerBlock(b)
+		mg.CeleryWorkers, err = parseCeleryWorkersBlock(b)
 		if err != nil {
 			return nil, fmt.Errorf("mothergoose %q celery_workers: %w", mg.Name, err)
 		}
@@ -497,6 +509,46 @@ func parseServerlessContainerBlock(block *parser.Block) (ServerlessContainerConf
 		sc.Environment = env
 	}
 	return sc, nil
+}
+
+func parseCeleryWorkersBlock(block *parser.Block) (CeleryWorkersConfig, error) {
+	c := CeleryWorkersConfig{}
+	if v, ok := block.GetAttribute("memory"); ok {
+		n, err := v.AsInt()
+		if err != nil {
+			return c, fmt.Errorf("invalid memory: %w", err)
+		}
+		c.Memory = n
+	}
+	if v, ok := block.GetAttribute("cores"); ok {
+		n, err := v.AsInt()
+		if err != nil {
+			return c, fmt.Errorf("invalid cores: %w", err)
+		}
+		c.Cores = n
+	}
+	if v, ok := block.GetAttribute("core_fraction"); ok {
+		n, err := v.AsInt()
+		if err != nil {
+			return c, fmt.Errorf("invalid core_fraction: %w", err)
+		}
+		c.CoreFraction = n
+	}
+	if v, ok := block.GetAttribute("execution_timeout"); ok {
+		s, err := v.AsString()
+		if err != nil {
+			return c, fmt.Errorf("invalid execution_timeout: %w", err)
+		}
+		c.ExecutionTimeout = s
+	}
+	if v, ok := block.GetAttribute("concurrency"); ok {
+		n, err := v.AsInt()
+		if err != nil {
+			return c, fmt.Errorf("invalid concurrency: %w", err)
+		}
+		c.Concurrency = n
+	}
+	return c, nil
 }
 
 func parseGitSyncTriggerBlock(block *parser.Block) (GitSyncTriggerConfig, error) {

@@ -113,9 +113,8 @@ func runDeploySimulation(
 	// Step 6: MG containers (stepMGContainers)
 	if mgCfg.FastAPIApp.Name != "" {
 		ensureResource(existing, tracker, "container", mgCfg.FastAPIApp.Name)
-	}
-	if mgCfg.CeleryWorkers.Name != "" {
-		ensureResource(existing, tracker, "container", mgCfg.CeleryWorkers.Name)
+		// Celery container name is derived: FastAPIApp.Name + "-celery"
+		ensureResource(existing, tracker, "container", mgCfg.FastAPIApp.Name+"-celery")
 	}
 
 	// Step 7: UF containers (stepUFContainers)
@@ -158,9 +157,7 @@ func randomIdempotencyMGConfig(numQueues, numTriggers, numSAs int) *MGConfig {
 			Memory: 512,
 			Cores:  1,
 		},
-		CeleryWorkers: ServerlessContainerConfig{
-			Name:   fmt.Sprintf("celery-%d", rand.Intn(10000)),
-			Image:  "cr.yandex/test/celery:latest",
+		CeleryWorkers: CeleryWorkersConfig{
 			Memory: 1024,
 			Cores:  2,
 		},

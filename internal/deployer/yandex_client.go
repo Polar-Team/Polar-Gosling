@@ -506,9 +506,7 @@ func (c *YandexCloudClient) pushImages(ctx context.Context, mgCfg *MGConfig, ufC
 	if mgCfg.FastAPIApp.Image == "" {
 		mgCfg.FastAPIApp.Image = mgTarget
 	}
-	if mgCfg.CeleryWorkers.Image == "" {
-		mgCfg.CeleryWorkers.Image = mgTarget
-	}
+	// CeleryWorkers inherits image from FastAPIApp — no separate image field
 	if ufCfg != nil && ufCfg.Workers.Image == "" {
 		ufCfg.Workers.Image = ufTarget
 	}
@@ -544,7 +542,22 @@ func (c *YandexCloudClient) stepMGContainers(ctx context.Context, mgCfg *MGConfi
 	c.mgContainerID = id
 	c.mgContainerURL = url
 
-	if _, _, err := c.deployContainer(ctx, mgCfg.CeleryWorkers); err != nil {
+	// Celery workers share the same image, name prefix, and SA as FastAPIApp
+	celeryContainer := ServerlessContainerConfig{
+		Name:             mgCfg.FastAPIApp.Name + "-celery",
+		Image:            mgCfg.FastAPIApp.Image,
+		ServiceAccount:   mgCfg.FastAPIApp.ServiceAccount,
+		Memory:           mgCfg.CeleryWorkers.Memory,
+		Cores:            mgCfg.CeleryWorkers.Cores,
+		CoreFraction:     mgCfg.CeleryWorkers.CoreFraction,
+		ExecutionTimeout: mgCfg.CeleryWorkers.ExecutionTimeout,
+		Concurrency:      mgCfg.CeleryWorkers.Concurrency,
+		Environment:      mgCfg.FastAPIApp.Environment,
+	}
+	if celeryContainer.Memory == 0 {
+		celeryContainer.Memory = mgCfg.FastAPIApp.Memory
+	}
+	if _, _, err := c.deployContainer(ctx, celeryContainer); err != nil {
 		return fmt.Errorf("celery container: %w", err)
 	}
 	return nil

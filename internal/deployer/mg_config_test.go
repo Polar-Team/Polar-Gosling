@@ -3,6 +3,7 @@ package deployer
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -78,15 +79,8 @@ mothergoose "yandex_prod" {
   }
 
   storage {
-    state_bucket {
-      name       = "mg-tofu-states"
-      versioning = true
-    }
-
-    binary_bucket {
-      name       = "mg-binaries"
-      versioning = false
-    }
+    bucket_name = "mg-storage"
+    region      = "ru-central1"
   }
 
   service_account {
@@ -125,10 +119,8 @@ mothergoose "aws_staging" {
   }
 
   storage {
-    state_bucket {
-      name       = "mg-tofu-states-aws"
-      versioning = true
-    }
+    bucket_name = "mg-storage-aws"
+    region      = "us-east-1"
   }
 }
 `
@@ -205,17 +197,11 @@ func TestParseMGDirectory_SingleFile(t *testing.T) {
 	if mg.Database.ServerlessMode != true {
 		t.Error("expected database serverless_mode true")
 	}
-	if mg.Storage.StateBucket.Name != "mg-tofu-states" {
-		t.Errorf("expected state bucket 'mg-tofu-states', got %q", mg.Storage.StateBucket.Name)
+	if mg.Storage.BucketName != "mg-storage" {
+		t.Errorf("expected bucket name 'mg-storage', got %q", mg.Storage.BucketName)
 	}
-	if mg.Storage.StateBucket.Versioning != true {
-		t.Error("expected state bucket versioning true")
-	}
-	if mg.Storage.BinaryBucket.Name != "mg-binaries" {
-		t.Errorf("expected binary bucket 'mg-binaries', got %q", mg.Storage.BinaryBucket.Name)
-	}
-	if mg.Storage.BinaryBucket.Versioning != false {
-		t.Error("expected binary bucket versioning false")
+	if mg.Storage.Region != "ru-central1" {
+		t.Errorf("expected region 'ru-central1', got %q", mg.Storage.Region)
 	}
 	if len(mg.ServiceAccounts) != 1 {
 		t.Fatalf("expected 1 service account, got %d", len(mg.ServiceAccounts))
@@ -454,5 +440,118 @@ func TestParseMGDirectory_EmptyDir(t *testing.T) {
 	}
 	if len(configs) != 0 {
 		t.Errorf("expected 0 configs from empty dir, got %d", len(configs))
+	}
+}
+
+func TestParseMGDirectory_LegacyStateBucketRejected(t *testing.T) {
+	mgDir := t.TempDir()
+	writeFlyFile(t, mgDir, "config.fly", `
+mothergoose "legacy_test" {
+  cloud {
+    provider     = "yandex"
+    yc_folder_id = "b1g1234567890"
+    yc_cloud_id  = "b1gabcdefghij"
+  }
+
+  storage {
+    state_bucket {
+      name       = "old-state"
+      versioning = true
+    }
+  }
+}
+`)
+
+	_, err := ParseMGDirectory(mgDir)
+	if err == nil {
+		t.Fatal("expected error for legacy state_bucket sub-block, got nil")
+	}
+	if !strings.Contains(err.Error(), "state_bucket") || !strings.Contains(err.Error(), "no longer supported") {
+		t.Errorf("expected legacy migration error mentioning state_bucket, got: %v", err)
+	}
+}
+
+func TestParseMGDirectory_LegacyBinaryBucketOnlyRejected(t *testing.T) {
+	mgDir := t.TempDir()
+	writeFlyFile(t, mgDir, "config.fly", `
+mothergoose "legacy_bin" {
+  cloud {
+    provider     = "yandex"
+    yc_folder_id = "b1g1234567890"
+    yc_cloud_id  = "b1gabcdefghij"
+  }
+
+  storage {
+    binary_bucket {
+      name = "old-bin"
+    }
+  }
+}
+`)
+
+	_, err := ParseMGDirectory(mgDir)
+	if err == nil {
+		t.Fatal("expected error for legacy binary_bucket sub-block, got nil")
+	}
+	if !strings.Contains(err.Error(), "binary_bucket") || !strings.Contains(err.Error(), "no longer supported") {
+		t.Errorf("expected legacy migration error mentioning binary_bucket, got: %v", err)
+	}
+}
+
+func TestParseMGDirectory_LegacyBothBucketsRejected(t *testing.T) {
+	mgDir := t.TempDir()
+	writeFlyFile(t, mgDir, "config.fly", `
+mothergoose "legacy_both" {
+  cloud {
+    provider     = "yandex"
+    yc_folder_id = "b1g1234567890"
+    yc_cloud_id  = "b1gabcdefghij"
+  }
+
+  storage {
+    state_bucket {
+      name = "old-state"
+    }
+    binary_bucket {
+      name = "old-bin"
+    }
+  }
+}
+`)
+
+	_, err := ParseMGDirectory(mgDir)
+	if err == nil {
+		t.Fatal("expected error for legacy sub-blocks, got nil")
+	}
+	if !strings.Contains(err.Error(), "state_bucket") {
+		t.Errorf("expected error to mention state_bucket, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "binary_bucket") {
+		t.Errorf("expected error to mention binary_bucket, got: %v", err)
+	}
+}
+
+func TestParseMGDirectory_StorageBucketNameWithoutRegion(t *testing.T) {
+	mgDir := t.TempDir()
+	writeFlyFile(t, mgDir, "config.fly", `
+mothergoose "missing_region" {
+  cloud {
+    provider     = "yandex"
+    yc_folder_id = "b1g1234567890"
+    yc_cloud_id  = "b1gabcdefghij"
+  }
+
+  storage {
+    bucket_name = "my-bucket"
+  }
+}
+`)
+
+	_, err := ParseMGDirectory(mgDir)
+	if err == nil {
+		t.Fatal("expected error for bucket_name without region, got nil")
+	}
+	if !strings.Contains(err.Error(), "both") {
+		t.Errorf("expected cross-field validation error, got: %v", err)
 	}
 }

@@ -80,21 +80,10 @@ type DatabaseConfig struct {
 	ServerlessMode bool
 }
 
-// BucketConfig represents a single S3/object storage bucket
-type BucketConfig struct {
-	Name       string
-	Versioning bool
-}
-
 // StorageConfig represents S3/object storage configuration
 type StorageConfig struct {
-	// Legacy flat fields (backward compat with old .fly format)
 	BucketName string
 	Region     string
-
-	// Structured sub-blocks (new .fly format)
-	StateBucket  BucketConfig
-	BinaryBucket BucketConfig
 }
 
 // ServiceAccountConfig represents a service account configuration
@@ -657,7 +646,21 @@ func parseDatabaseBlock(block *parser.Block) (DatabaseConfig, error) {
 
 func parseStorageBlock(block *parser.Block) (StorageConfig, error) {
 	s := StorageConfig{}
-	// Legacy flat attributes
+
+	// Detect legacy sub-bucket definitions and return migration error (Req 25.14)
+	var legacyBlocks []string
+	if _, ok := block.GetBlock("state_bucket"); ok {
+		legacyBlocks = append(legacyBlocks, "state_bucket")
+	}
+	if _, ok := block.GetBlock("binary_bucket"); ok {
+		legacyBlocks = append(legacyBlocks, "binary_bucket")
+	}
+	if len(legacyBlocks) > 0 {
+		return s, fmt.Errorf("legacy storage format detected: %s sub-block(s) no longer supported. "+
+			"Migrate to the unified single-bucket format:\n\n  storage {\n    bucket_name = \"my-bucket\"\n    region      = \"ru-central1\"\n  }",
+			strings.Join(legacyBlocks, ", "))
+	}
+
 	if v, ok := block.GetAttribute("bucket_name"); ok {
 		str, err := v.AsString()
 		if err != nil {
@@ -672,41 +675,13 @@ func parseStorageBlock(block *parser.Block) (StorageConfig, error) {
 		}
 		s.Region = str
 	}
-	// Structured sub-blocks
-	if b, ok := block.GetBlock("state_bucket"); ok {
-		bc, err := parseBucketBlock(b)
-		if err != nil {
-			return s, fmt.Errorf("state_bucket: %w", err)
-		}
-		s.StateBucket = bc
-	}
-	if b, ok := block.GetBlock("binary_bucket"); ok {
-		bc, err := parseBucketBlock(b)
-		if err != nil {
-			return s, fmt.Errorf("binary_bucket: %w", err)
-		}
-		s.BinaryBucket = bc
-	}
-	return s, nil
-}
 
-func parseBucketBlock(block *parser.Block) (BucketConfig, error) {
-	bc := BucketConfig{}
-	if v, ok := block.GetAttribute("name"); ok {
-		str, err := v.AsString()
-		if err != nil {
-			return bc, fmt.Errorf("invalid name: %w", err)
-		}
-		bc.Name = str
+	// Cross-field validation: bucket_name and region must both be present or both absent
+	if (s.BucketName != "") != (s.Region != "") {
+		return s, fmt.Errorf("storage block requires both 'bucket_name' and 'region' attributes")
 	}
-	if v, ok := block.GetAttribute("versioning"); ok {
-		b, err := v.AsBool()
-		if err != nil {
-			return bc, fmt.Errorf("invalid versioning: %w", err)
-		}
-		bc.Versioning = b
-	}
-	return bc, nil
+
+	return s, nil
 }
 
 func parseServiceAccountBlock(block *parser.Block) (ServiceAccountConfig, error) {

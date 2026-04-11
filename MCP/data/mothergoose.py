@@ -330,7 +330,7 @@ MOTHERGOOSE_SERVICES: list[dict[str, Any]] = [
         "name": "MultiCloudConsistencyService",
         "module": "services.multi_cloud_consistency",
         "description": "Enforces cloud-agnostic runner behaviour (Req 9.8). Builds normalised RunnerDeploymentConfig for any (Egg, cloud) pair and validates structural equivalence across Yandex Cloud and AWS deployments.",
-        "methods": ["build_deployment_config(egg_config, cloud_provider, region, state_bucket)", "assert_equivalent(yandex_config, aws_config)"],
+        "methods": ["build_deployment_config(egg_config, cloud_provider, region, backend_bucket)", "assert_equivalent(yandex_config, aws_config)"],
         "data_classes": ["RunnerDeploymentConfig(egg_name, runner_type, timeout_minutes, tags, concurrent, cloud_provider, region, provider_name, backend_bucket, backend_key, backend_region)"],
     },
     {

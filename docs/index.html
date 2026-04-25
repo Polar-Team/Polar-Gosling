@@ -360,6 +360,7 @@
     <a href="#cmd-rollback">gosling rollback</a>
     <a href="#cmd-status">gosling status</a>
     <a href="#cmd-runner">gosling runner</a>
+    <a href="#cmd-lockbox">gosling lockbox</a>
     <a href="#cmd-rift">rift serve</a>
   </div>
   <div class="mobile-sidebar-section">
@@ -402,6 +403,7 @@
       <a href="#cmd-rollback">gosling rollback</a>
       <a href="#cmd-status">gosling status</a>
       <a href="#cmd-runner">gosling runner</a>
+      <a href="#cmd-lockbox">gosling lockbox</a>
       <a href="#cmd-rift">rift serve</a>
     </div>
     <div class="sidebar-section">
@@ -466,8 +468,11 @@ gosling add egg my-app --type vm --provider yandex
 <span class="cmt"># Add a serverless runner for an AWS project</span>
 gosling add egg api-service --type serverless --provider aws --region us-east-1</code></pre>
 
-      <h3>3. Edit the generated config</h3>
-      <pre><code><span class="cmt"># Edit Eggs/my-app/config.fly — set your project_id and token_secret</span>
+      <h3>3. Set up secrets and edit the config</h3>
+      <pre><code><span class="cmt"># Create a secret store for the egg</span>
+gosling lockbox create --provider yandex --egg-name my-app --folder-id abc123
+
+<span class="cmt"># Edit Eggs/my-app/config.fly — set your project_id and paste the generated URIs</span>
 vim Eggs/my-app/config.fly</code></pre>
 
       <h3>4. Validate and deploy</h3>
@@ -551,6 +556,10 @@ gosling init --path /path/to/nest</code></pre>
           </table>
           <pre><code>gosling add egg my-app --type vm --provider yandex
 gosling add egg api-service --type serverless --provider aws --region us-east-1</code></pre>
+          <div class="callout callout-tip">
+            <strong>✅ Interactive secret store setup</strong>
+            When using <code>--interactive</code>, Gosling will prompt you to link or create a cloud secret store (Yandex Cloud Lockbox or AWS Secrets Manager) for the Egg. If you choose to create one, the generated Secret URIs are automatically wired into <code>config.fly</code>. If you skip, placeholder URIs with TODO comments are used instead.
+          </div>
 
           <h3>gosling add job</h3>
           <code class="cmd-usage">gosling add job &lt;name&gt; [flags]</code>
@@ -795,6 +804,69 @@ gosling status --all --api-url https://mg.example.com --api-key $MG_API_KEY</cod
       </div>
     </section>
 
+    <!-- CMD: LOCKBOX -->
+    <section class="section reveal" id="cmd-lockbox">
+      <div class="cmd-block">
+        <div class="cmd-header">
+          <span class="cmd-name">gosling lockbox</span>
+          <span class="cmd-desc">Manage cloud secret stores for Egg configurations</span>
+        </div>
+        <div class="cmd-body">
+          <p>Provides subcommands to create, list, and verify secret stores in Yandex Cloud Lockbox or AWS Secrets Manager. Each Egg requires three secret entries: <code>runner-token</code>, <code>webhook-secret</code>, and <code>repo-url</code>.</p>
+          <pre><code>gosling lockbox &lt;subcommand&gt; [flags]</code></pre>
+
+          <h3>gosling lockbox create</h3>
+          <code class="cmd-usage">gosling lockbox create --provider &lt;provider&gt; --egg-name &lt;name&gt; [flags]</code>
+          <p>Creates a new cloud secret store with three placeholder entries for an Egg. After creation, the generated Secret URIs are printed to stdout for use in <code>config.fly</code>.</p>
+          <table>
+            <tr><th>Flag</th><th>Required</th><th>Description</th></tr>
+            <tr><td class="flag-name">--provider</td><td><span class="flag-required">required</span></td><td>Cloud provider: <code>yandex</code> or <code>aws</code></td></tr>
+            <tr><td class="flag-name">--egg-name</td><td><span class="flag-required">required</span></td><td>Name of the Egg</td></tr>
+            <tr><td class="flag-name">--folder-id</td><td><span class="flag-optional">yandex only</span></td><td>Yandex Cloud folder ID (required for <code>yandex</code>)</td></tr>
+            <tr><td class="flag-name">--region</td><td><span class="flag-optional">optional</span></td><td>AWS region (uses SDK default if omitted)</td></tr>
+          </table>
+          <pre><code><span class="cmt"># Create a Yandex Cloud Lockbox secret store</span>
+gosling lockbox create --provider yandex --egg-name my-app --folder-id abc123
+
+<span class="cmt"># Create an AWS Secrets Manager secret store</span>
+gosling lockbox create --provider aws --egg-name my-app --region us-east-1</code></pre>
+          <div class="callout callout-info">
+            <strong>ℹ️ Secret naming</strong>
+            Yandex Cloud secrets are named <code>pg-{egg-name}-secrets</code>. AWS secrets are named <code>polar-gosling/{egg-name}</code>. Both are tagged with <code>polar-gosling: true</code> and <code>egg-name: {egg}</code>.
+          </div>
+
+          <h3>gosling lockbox list</h3>
+          <code class="cmd-usage">gosling lockbox list --provider &lt;provider&gt; [flags]</code>
+          <p>Lists all cloud secret stores tagged for Polar Gosling use. Displays name, ID/ARN, associated egg name, and creation date.</p>
+          <table>
+            <tr><th>Flag</th><th>Required</th><th>Description</th></tr>
+            <tr><td class="flag-name">--provider</td><td><span class="flag-required">required</span></td><td>Cloud provider: <code>yandex</code> or <code>aws</code></td></tr>
+            <tr><td class="flag-name">--folder-id</td><td><span class="flag-optional">yandex only</span></td><td>Yandex Cloud folder ID (required for <code>yandex</code>)</td></tr>
+            <tr><td class="flag-name">--region</td><td><span class="flag-optional">optional</span></td><td>AWS region (uses SDK default if omitted)</td></tr>
+          </table>
+          <pre><code>gosling lockbox list --provider yandex --folder-id abc123
+gosling lockbox list --provider aws --region us-east-1</code></pre>
+
+          <h3>gosling lockbox verify</h3>
+          <code class="cmd-usage">gosling lockbox verify --provider &lt;provider&gt; [flags]</code>
+          <p>Verifies that a secret store exists and contains all three required entries (<code>runner-token</code>, <code>webhook-secret</code>, <code>repo-url</code>). Exits with code 0 if all entries are present, or non-zero with a present/missing report.</p>
+          <table>
+            <tr><th>Flag</th><th>Required</th><th>Description</th></tr>
+            <tr><td class="flag-name">--provider</td><td><span class="flag-required">required</span></td><td>Cloud provider: <code>yandex</code> or <code>aws</code></td></tr>
+            <tr><td class="flag-name">--secret-id</td><td><span class="flag-optional">yandex only</span></td><td>Yandex Cloud Lockbox secret ID</td></tr>
+            <tr><td class="flag-name">--secret-name</td><td><span class="flag-optional">aws only</span></td><td>AWS Secrets Manager secret name</td></tr>
+            <tr><td class="flag-name">--folder-id</td><td><span class="flag-optional">yandex only</span></td><td>Yandex Cloud folder ID (required for <code>yandex</code>)</td></tr>
+            <tr><td class="flag-name">--region</td><td><span class="flag-optional">optional</span></td><td>AWS region (uses SDK default if omitted)</td></tr>
+          </table>
+          <pre><code><span class="cmt"># Verify a Yandex Cloud Lockbox secret</span>
+gosling lockbox verify --provider yandex --folder-id abc123 --secret-id e6q...
+
+<span class="cmt"># Verify an AWS Secrets Manager secret</span>
+gosling lockbox verify --provider aws --secret-name polar-gosling/my-app</code></pre>
+        </div>
+      </div>
+    </section>
+
     <!-- CMD: RIFT SERVE -->
     <section class="section reveal" id="cmd-rift">
       <div class="cmd-block">
@@ -905,8 +977,11 @@ gosling status --all --api-url https://mg.example.com --api-key $MG_API_KEY</cod
   <span class="kw">gitlab</span> {
     <span class="attr">project_id</span>   = <span class="num">12345</span>
     <span class="attr">server_name</span>  = <span class="str">"https://gitlab.example.com"</span>
-    <span class="attr">token_secret</span> = <span class="uri">"yc-lockbox://abc123/runner-token"</span>
   }
+
+  <span class="attr">gitlab_token_secret</span>   = <span class="uri">"yc-lockbox://abc123/runner-token"</span>
+  <span class="attr">gitlab_webhook_secret</span> = <span class="uri">"yc-lockbox://abc123/webhook-secret"</span>
+  <span class="attr">git_repo_url_secret</span>   = <span class="uri">"yc-lockbox://abc123/repo-url"</span>
 
   <span class="kw">environment</span> {  <span class="cmt"># optional</span>
     <span class="attr">DOCKER_DRIVER</span> = <span class="str">"overlay2"</span>
@@ -927,7 +1002,9 @@ gosling status --all --api-url https://mg.example.com --api-key $MG_API_KEY</cod
         <tr><td><code>runner.concurrent</code></td><td>number</td><td>1–100</td></tr>
         <tr><td><code>gitlab.project_id</code></td><td>number</td><td>1–999999999</td></tr>
         <tr><td><code>gitlab.server_name</code></td><td>string</td><td>GitLab instance URL or FQDN</td></tr>
-        <tr><td><code>gitlab.token_secret</code></td><td>string</td><td>Secret URI (see <a href="#fly-secrets">Secret URIs</a>)</td></tr>
+        <tr><td><code>gitlab_token_secret</code></td><td>string</td><td>Secret URI for GitLab runner token (see <a href="#fly-secrets">Secret URIs</a>)</td></tr>
+        <tr><td><code>gitlab_webhook_secret</code></td><td>string</td><td>Secret URI for GitLab webhook secret (see <a href="#fly-secrets">Secret URIs</a>)</td></tr>
+        <tr><td><code>git_repo_url_secret</code></td><td>string</td><td>Secret URI for Git repository URL (see <a href="#fly-secrets">Secret URIs</a>)</td></tr>
       </table>
     </section>
 

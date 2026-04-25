@@ -15,14 +15,25 @@ GOSLING_COMMANDS: list[dict[str, Any]] = [
     {
         "name": "add egg",
         "usage": "gosling add egg <name> [flags]",
-        "description": "Scaffold a new Egg config.fly under Eggs/<name>/. The name must be alphanumeric with hyphens or underscores.",
+        "description": "Scaffold a new Egg config.fly under Eggs/<name>/. The name must be alphanumeric with hyphens or underscores. In interactive mode, guides the user through secret store setup (create new, use existing, or placeholder URIs).",
         "flags": [
             {"flag": "--type", "short": "-t", "type": "string", "values": ["vm", "serverless"], "default": "vm", "description": "Runner type"},
             {"flag": "--provider", "short": "-p", "type": "string", "values": ["yandex", "aws"], "default": "yandex", "description": "Cloud provider"},
             {"flag": "--region", "short": "-r", "type": "string", "description": "Cloud region (e.g. ru-central1-a, us-east-1)"},
-            {"flag": "--interactive", "short": "-i", "type": "bool", "default": False, "description": "Interactive mode for guided setup"},
+            {"flag": "--folder-id", "type": "string", "description": "Yandex Cloud folder ID (for interactive secret store creation)"},
+            {"flag": "--interactive", "short": "-i", "type": "bool", "default": False, "description": "Interactive mode for guided setup including secret store provisioning"},
         ],
-        "example": "gosling add egg my-app --type vm --provider yandex",
+        "interactive_flow": {
+            "description": "When --interactive is set, after collecting egg name/provider/region the CLI prompts for secret store setup.",
+            "steps": [
+                "Prompt: 'Does a secret store already exist? [y/n]'",
+                "If yes: prompt for secret ID (YC) or secret name (AWS), generate URIs via GenerateAllURIs",
+                "If no: prompt 'Create one now? [y/n]'",
+                "If create yes: call SecretStore.Create() programmatically, use returned URIs",
+                "If create no: use placeholder URIs with TODO comments in config.fly",
+            ],
+        },
+        "example": "gosling add egg my-app --type vm --provider yandex --interactive",
     },
     {
         "name": "add job",
@@ -167,6 +178,58 @@ GOSLING_COMMANDS: list[dict[str, Any]] = [
         "note": "Cannot be used by Job runners (Job runners cannot use Rift). Only Egg runners with tofu_rift_required=true get a Rift server.",
         "example": "rift serve --auth-token-secret yc-lockbox://abc123/rift-token --s3-bucket my-rift-cache --s3-region ru-central1",
     },
+    {
+        "name": "lockbox",
+        "usage": "gosling lockbox <subcommand> [flags]",
+        "description": "Manage cloud secret stores for Egg configurations. Parent command that groups create, list, and verify subcommands for provisioning and inspecting secrets in Yandex Cloud Lockbox or AWS Secrets Manager.",
+        "subcommands": ["create", "list", "verify"],
+        "example": "gosling lockbox --help",
+    },
+    {
+        "name": "lockbox create",
+        "usage": "gosling lockbox create [flags]",
+        "description": "Create a new cloud secret store with placeholder entries for an Egg configuration. The secret is created with three required entries (runner-token, webhook-secret, repo-url) set to empty placeholder values. After creation, the generated Secret URIs are printed to stdout (one per line) for use in config.fly.",
+        "flags": [
+            {"flag": "--provider", "type": "string", "values": ["yandex", "aws"], "required": True, "description": "Cloud provider"},
+            {"flag": "--egg-name", "type": "string", "required": True, "description": "Name of the Egg"},
+            {"flag": "--folder-id", "type": "string", "description": "Yandex Cloud folder ID (required for yandex provider)"},
+            {"flag": "--region", "type": "string", "description": "AWS region (optional, uses SDK default if omitted)"},
+        ],
+        "secret_naming": {
+            "yandex": "pg-{egg-name}-secrets",
+            "aws": "polar-gosling/{egg-name}",
+        },
+        "required_entries": ["runner-token", "webhook-secret", "repo-url"],
+        "labels_tags": {"polar-gosling": "true", "egg-name": "{egg-name}"},
+        "stdout": "One Secret URI per line for each required entry",
+        "example": "gosling lockbox create --provider yandex --egg-name my-app --folder-id abc123",
+    },
+    {
+        "name": "lockbox list",
+        "usage": "gosling lockbox list [flags]",
+        "description": "List all cloud secret stores tagged for Polar Gosling use. Displays name, ID/ARN, associated egg name, and creation date for each secret store. Prints 'no Polar Gosling secret stores found' to stderr when the list is empty.",
+        "flags": [
+            {"flag": "--provider", "type": "string", "values": ["yandex", "aws"], "required": True, "description": "Cloud provider"},
+            {"flag": "--folder-id", "type": "string", "description": "Yandex Cloud folder ID (required for yandex provider)"},
+            {"flag": "--region", "type": "string", "description": "AWS region (optional, uses SDK default if omitted)"},
+        ],
+        "output_columns": ["NAME", "ID", "EGG", "CREATED"],
+        "example": "gosling lockbox list --provider yandex --folder-id abc123",
+    },
+    {
+        "name": "lockbox verify",
+        "usage": "gosling lockbox verify [flags]",
+        "description": "Verify that a cloud secret store exists and contains all required entries (runner-token, webhook-secret, repo-url). Prints a success message listing found entries (exit 0) or a present/missing report (exit non-zero) if any entries are missing.",
+        "flags": [
+            {"flag": "--provider", "type": "string", "values": ["yandex", "aws"], "required": True, "description": "Cloud provider"},
+            {"flag": "--secret-id", "type": "string", "description": "Yandex Cloud Lockbox secret ID"},
+            {"flag": "--secret-name", "type": "string", "description": "AWS Secrets Manager secret name"},
+            {"flag": "--folder-id", "type": "string", "description": "Yandex Cloud folder ID (required for yandex provider)"},
+            {"flag": "--region", "type": "string", "description": "AWS region (optional, uses SDK default if omitted)"},
+        ],
+        "exit_codes": {"0": "All required entries present", "1": "Missing entries or error"},
+        "example": "gosling lockbox verify --provider yandex --folder-id abc123 --secret-id e6q...",
+    },
 ]
 
 FLY_LANGUAGE_REFERENCE: dict[str, Any] = {
@@ -208,7 +271,9 @@ FLY_LANGUAGE_REFERENCE: dict[str, Any] = {
                 "runner.concurrent": {"type": "number", "constraints": "1–100"},
                 "gitlab.project_id": {"type": "number", "constraints": "1–999999999"},
                 "gitlab.server_name": {"type": "string", "description": "GitLab instance URL or FQDN"},
-                "gitlab.token_secret": {"type": "string", "description": "Secret URI (yc-lockbox://, aws-sm://, vault://)"},
+                "gitlab_token_secret": {"type": "secret_uri", "description": "Secret URI for GitLab runner registration token (yc-lockbox://, aws-sm://, vault://). Top-level egg attribute."},
+                "gitlab_webhook_secret": {"type": "secret_uri", "description": "Secret URI for GitLab webhook validation secret. Top-level egg attribute."},
+                "git_repo_url_secret": {"type": "secret_uri", "description": "Secret URI for the Git repository clone URL. Top-level egg attribute."},
             },
             "optional_blocks": {
                 "runner.idle_timeout": {"type": "string", "description": "Duration string e.g. '10m'"},

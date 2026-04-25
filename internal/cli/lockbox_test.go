@@ -34,7 +34,7 @@ func resetCreateFlags() {
 	createRegion = ""
 	lockboxCreateCmd.Flags().VisitAll(func(f *pflag.Flag) {
 		f.Changed = false
-		f.Value.Set(f.DefValue)
+		_ = f.Value.Set(f.DefValue)
 	})
 }
 
@@ -45,7 +45,7 @@ func resetListFlags() {
 	listRegion = ""
 	lockboxListCmd.Flags().VisitAll(func(f *pflag.Flag) {
 		f.Changed = false
-		f.Value.Set(f.DefValue)
+		_ = f.Value.Set(f.DefValue)
 	})
 }
 
@@ -58,7 +58,7 @@ func resetVerifyFlags() {
 	verifyRegion = ""
 	lockboxVerifyCmd.Flags().VisitAll(func(f *pflag.Flag) {
 		f.Changed = false
-		f.Value.Set(f.DefValue)
+		_ = f.Value.Set(f.DefValue)
 	})
 }
 

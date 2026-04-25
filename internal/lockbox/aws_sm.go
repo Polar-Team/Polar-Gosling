@@ -60,8 +60,8 @@ func (s *AWSSecretsManagerStore) Create(ctx context.Context, params CreateParams
 	}
 
 	// Build JSON value with empty placeholder entries
-	secretValue := make(map[string]string, len(RequiredEntries))
-	for _, key := range RequiredEntries {
+	secretValue := make(map[string]string, len(requiredEntries))
+	for _, key := range requiredEntries {
 		secretValue[key] = ""
 	}
 	jsonBytes, err := json.Marshal(secretValue)
@@ -151,7 +151,7 @@ func (s *AWSSecretsManagerStore) Verify(ctx context.Context, secretRef string) (
 	}
 
 	result := &VerifyResult{}
-	for _, key := range RequiredEntries {
+	for _, key := range requiredEntries {
 		if _, ok := secretData[key]; ok {
 			result.Present = append(result.Present, key)
 		} else {

@@ -75,8 +75,8 @@ func (m *MockSecretStore) Create(ctx context.Context, params CreateParams) (*Cre
 		id = secretName // AWS uses the name as the identifier for URIs
 	}
 
-	entries := make(map[string]string, len(RequiredEntries))
-	for _, key := range RequiredEntries {
+	entries := make(map[string]string, len(requiredEntries))
+	for _, key := range requiredEntries {
 		entries[key] = ""
 	}
 
@@ -140,7 +140,7 @@ func (m *MockSecretStore) Verify(ctx context.Context, secretRef string) (*Verify
 	}
 
 	result := &VerifyResult{}
-	for _, key := range RequiredEntries {
+	for _, key := range requiredEntries {
 		if _, ok := found.entries[key]; ok {
 			result.Present = append(result.Present, key)
 		} else {
@@ -204,8 +204,8 @@ func TestIntegration_YandexCreateThenVerify(t *testing.T) {
 	if result.ID == "" {
 		t.Fatal("Create returned empty ID")
 	}
-	if len(result.URIs) != len(RequiredEntries) {
-		t.Fatalf("Create returned %d URIs, want %d", len(result.URIs), len(RequiredEntries))
+	if len(result.URIs) != len(RequiredEntries()) {
+		t.Fatalf("Create returned %d URIs, want %d", len(result.URIs), len(RequiredEntries()))
 	}
 
 	// Verify all URIs have the correct scheme
@@ -231,8 +231,8 @@ func TestIntegration_YandexCreateThenVerify(t *testing.T) {
 	if len(verifyResult.Missing) != 0 {
 		t.Errorf("Verify found missing entries: %v", verifyResult.Missing)
 	}
-	if len(verifyResult.Present) != len(RequiredEntries) {
-		t.Errorf("Verify found %d present entries, want %d", len(verifyResult.Present), len(RequiredEntries))
+	if len(verifyResult.Present) != len(RequiredEntries()) {
+		t.Errorf("Verify found %d present entries, want %d", len(verifyResult.Present), len(RequiredEntries()))
 	}
 }
 
@@ -283,8 +283,8 @@ func TestIntegration_AWSCreateThenVerify(t *testing.T) {
 	if len(verifyResult.Missing) != 0 {
 		t.Errorf("Verify found missing entries: %v", verifyResult.Missing)
 	}
-	if len(verifyResult.Present) != len(RequiredEntries) {
-		t.Errorf("Verify found %d present entries, want %d", len(verifyResult.Present), len(RequiredEntries))
+	if len(verifyResult.Present) != len(RequiredEntries()) {
+		t.Errorf("Verify found %d present entries, want %d", len(verifyResult.Present), len(RequiredEntries()))
 	}
 }
 
@@ -325,8 +325,7 @@ func TestIntegration_CreateVerifyAllEntriesPresent(t *testing.T) {
 
 			// All entries should be present, none missing
 			sort.Strings(vr.Present)
-			expectedPresent := make([]string, len(RequiredEntries))
-			copy(expectedPresent, RequiredEntries)
+			expectedPresent := RequiredEntries()
 			sort.Strings(expectedPresent)
 
 			if len(vr.Present) != len(expectedPresent) {
@@ -584,8 +583,8 @@ func TestIntegration_VerifyNoEntries(t *testing.T) {
 	if len(result.Present) != 0 {
 		t.Errorf("Present count = %d, want 0", len(result.Present))
 	}
-	if len(result.Missing) != len(RequiredEntries) {
-		t.Errorf("Missing count = %d, want %d", len(result.Missing), len(RequiredEntries))
+	if len(result.Missing) != len(RequiredEntries()) {
+		t.Errorf("Missing count = %d, want %d", len(result.Missing), len(RequiredEntries()))
 	}
 }
 
@@ -627,7 +626,7 @@ func TestIntegration_VerifyAPIError(t *testing.T) {
 	store.verifyErr = fmt.Errorf("retrieving Lockbox payload: rpc error: code = Internal")
 
 	// Even with a secret present, injected error should propagate
-	store.addSecretWithPartialEntries("pg-test-secrets", "test-id", "test", RequiredEntries)
+	store.addSecretWithPartialEntries("pg-test-secrets", "test-id", "test", RequiredEntries())
 
 	_, err := store.Verify(ctx, "test-id")
 	if err == nil {
@@ -683,8 +682,8 @@ func TestIntegration_FullFlowMultipleEggs(t *testing.T) {
 				createdIDs[egg] = result.ID
 
 				// Verify URIs count
-				if len(result.URIs) != len(RequiredEntries) {
-					t.Errorf("Create %s: URIs count = %d, want %d", egg, len(result.URIs), len(RequiredEntries))
+				if len(result.URIs) != len(RequiredEntries()) {
+					t.Errorf("Create %s: URIs count = %d, want %d", egg, len(result.URIs), len(RequiredEntries()))
 				}
 			}
 
@@ -707,8 +706,8 @@ func TestIntegration_FullFlowMultipleEggs(t *testing.T) {
 				if len(vr.Missing) != 0 {
 					t.Errorf("Verify %s: unexpected missing entries: %v", egg, vr.Missing)
 				}
-				if len(vr.Present) != len(RequiredEntries) {
-					t.Errorf("Verify %s: present count = %d, want %d", egg, len(vr.Present), len(RequiredEntries))
+				if len(vr.Present) != len(RequiredEntries()) {
+					t.Errorf("Verify %s: present count = %d, want %d", egg, len(vr.Present), len(RequiredEntries()))
 				}
 			}
 		})
@@ -769,8 +768,9 @@ func TestIntegration_CreateURIsAreConsistentWithProvider(t *testing.T) {
 
 func TestIntegration_AWSSecretJSONStructure(t *testing.T) {
 	// Simulate what the real AWS implementation does: build JSON with RequiredEntries
-	secretValue := make(map[string]string, len(RequiredEntries))
-	for _, key := range RequiredEntries {
+	entries := RequiredEntries()
+	secretValue := make(map[string]string, len(entries))
+	for _, key := range entries {
 		secretValue[key] = ""
 	}
 	jsonBytes, err := json.Marshal(secretValue)
@@ -784,11 +784,11 @@ func TestIntegration_AWSSecretJSONStructure(t *testing.T) {
 		t.Fatalf("Failed to unmarshal secret JSON: %v", err)
 	}
 
-	if len(parsed) != len(RequiredEntries) {
-		t.Errorf("JSON has %d keys, want %d", len(parsed), len(RequiredEntries))
+	if len(parsed) != len(entries) {
+		t.Errorf("JSON has %d keys, want %d", len(parsed), len(entries))
 	}
 
-	for _, key := range RequiredEntries {
+	for _, key := range entries {
 		val, ok := parsed[key]
 		if !ok {
 			t.Errorf("JSON missing key %q", key)

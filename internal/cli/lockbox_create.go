@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/polar-gosling/gosling/internal/lockbox"
 	"github.com/spf13/cobra"
@@ -56,7 +57,8 @@ func runLockboxCreate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
 	store, err := newSecretStore(ctx, params.Provider, params.FolderID, params.Region)
 	if err != nil {
@@ -70,13 +72,18 @@ func runLockboxCreate(cmd *cobra.Command, args []string) error {
 
 	// Print secret URIs to stdout, one per line
 	for _, key := range lockbox.RequiredEntries() {
-		fmt.Fprintln(os.Stdout, result.URIs[key])
+		if _, err := fmt.Fprintln(os.Stdout, result.URIs[key]); err != nil {
+			return fmt.Errorf("Failed to write URI for %s to stdout: %w", key, err)
+		}
 	}
-
 	return nil
 }
 
 // newSecretStore creates the appropriate SecretStore based on provider.
+// For Yandex Cloud, authentication uses InstanceServiceAccount credentials,
+// which requires the CLI to run on a YC VM or Serverless Container with an
+// assigned service account. Other auth methods (OAuth, IAM key file) are not
+// currently supported — extend this function to add them.
 func newSecretStore(ctx context.Context, provider, folderID, region string) (lockbox.SecretStore, error) {
 	switch provider {
 	case "yandex":

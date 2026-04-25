@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
 
@@ -375,7 +376,7 @@ func TestLockboxCreateRequiredFlagsMarked(t *testing.T) {
 			t.Errorf("flag %q has no annotations (not marked required)", flag)
 			continue
 		}
-		if _, ok := ann["cobra_annotation_bash_completion_one_required_flag"]; !ok {
+		if _, ok := ann[cobra.BashCompOneRequiredFlag]; !ok {
 			t.Errorf("flag %q not marked as required", flag)
 		}
 	}
@@ -393,7 +394,7 @@ func TestLockboxListRequiredFlagsMarked(t *testing.T) {
 		t.Error("flag 'provider' has no annotations (not marked required)")
 		return
 	}
-	if _, ok := ann["cobra_annotation_bash_completion_one_required_flag"]; !ok {
+	if _, ok := ann[cobra.BashCompOneRequiredFlag]; !ok {
 		t.Error("flag 'provider' not marked as required")
 	}
 }
@@ -410,7 +411,7 @@ func TestLockboxVerifyRequiredFlagsMarked(t *testing.T) {
 		t.Error("flag 'provider' has no annotations (not marked required)")
 		return
 	}
-	if _, ok := ann["cobra_annotation_bash_completion_one_required_flag"]; !ok {
+	if _, ok := ann[cobra.BashCompOneRequiredFlag]; !ok {
 		t.Error("flag 'provider' not marked as required")
 	}
 }

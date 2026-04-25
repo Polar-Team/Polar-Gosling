@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
+	"github.com/polar-gosling/gosling/internal/lockbox"
 	"github.com/spf13/cobra"
 )
 
@@ -45,17 +47,14 @@ func init() {
 }
 
 func runLockboxVerify(cmd *cobra.Command, args []string) error {
-	if verifyProvider != "yandex" && verifyProvider != "aws" {
-		return fmt.Errorf("invalid provider %q: must be 'yandex' or 'aws'", verifyProvider)
+	if err := lockbox.ValidateProviderFlags(verifyProvider, verifyFolderID); err != nil {
+		return err
 	}
 
 	// Determine the secret reference based on provider
 	var secretRef string
 	switch verifyProvider {
 	case "yandex":
-		if verifyFolderID == "" {
-			return fmt.Errorf("folder-id is required for Yandex Cloud provider")
-		}
 		if verifySecretID == "" {
 			return fmt.Errorf("secret-id is required for Yandex Cloud provider")
 		}
@@ -67,7 +66,8 @@ func runLockboxVerify(cmd *cobra.Command, args []string) error {
 		secretRef = verifySecretName
 	}
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
 	store, err := newSecretStore(ctx, verifyProvider, verifyFolderID, verifyRegion)
 	if err != nil {
@@ -80,7 +80,7 @@ func runLockboxVerify(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(result.Missing) == 0 {
-		fmt.Fprintf(os.Stdout, "✅ All required entries found: %s\n", strings.Join(result.Present, ", "))
+		fmt.Fprintf(os.Stdout, "OK: All required entries found: %s\n", strings.Join(result.Present, ", "))
 		return nil
 	}
 

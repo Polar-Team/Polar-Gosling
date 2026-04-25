@@ -1,10 +1,15 @@
 package cli
 
 import (
+	"bufio"
+	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
+	"github.com/polar-gosling/gosling/internal/lockbox"
 	"github.com/spf13/cobra"
 )
 
@@ -12,6 +17,7 @@ var (
 	eggType     string
 	eggProvider string
 	eggRegion   string
+	eggFolderID string
 	jobSchedule string
 	interactive bool
 )
@@ -96,6 +102,7 @@ func init() {
 	addEggCmd.Flags().StringVarP(&eggType, "type", "t", "vm", "Runner type: vm or serverless")
 	addEggCmd.Flags().StringVarP(&eggProvider, "provider", "p", "yandex", "Cloud provider: yandex or aws")
 	addEggCmd.Flags().StringVarP(&eggRegion, "region", "r", "", "Cloud region (e.g., ru-central1-a, us-east-1)")
+	addEggCmd.Flags().StringVar(&eggFolderID, "folder-id", "", "Yandex Cloud folder ID (for interactive secret store creation)")
 	addEggCmd.Flags().BoolVarP(&interactive, "interactive", "i", false, "Interactive mode")
 
 	// Job flags
@@ -130,6 +137,19 @@ func runAddEgg(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Interactive secret store flow
+	var secretURIs map[string]string
+	if interactive {
+		uris, err := runInteractiveSecretFlow(eggName, eggProvider, eggRegion, eggFolderID)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: secret store setup failed: %v\n", err)
+			fmt.Fprintln(os.Stderr, "Falling back to placeholder secret URIs.")
+			// secretURIs stays nil → placeholder mode
+		} else {
+			secretURIs = uris
+		}
+	}
+
 	// Find Nest root
 	nestRoot, err := findNestRoot()
 	if err != nil {
@@ -145,10 +165,10 @@ func runAddEgg(cmd *cobra.Command, args []string) error {
 	// Create config.fly
 	configPath := filepath.Join(eggDir, "config.fly")
 	if _, err := os.Stat(configPath); err == nil {
-		return fmt.Errorf("Egg configuration already exists at %s", configPath)
+		return fmt.Errorf("egg configuration already exists at %s", configPath)
 	}
 
-	configContent := generateEggConfig(eggName, eggType, eggProvider, eggRegion)
+	configContent := generateEggConfig(eggName, eggType, eggProvider, eggRegion, secretURIs)
 	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
 		return fmt.Errorf("failed to create config.fly: %w", err)
 	}
@@ -156,11 +176,107 @@ func runAddEgg(cmd *cobra.Command, args []string) error {
 	fmt.Printf("✅ Created Egg configuration: %s\n", configPath)
 	fmt.Println("\nNext steps:")
 	fmt.Println("  1. Edit the configuration file to customize settings")
-	fmt.Println("  2. Add GitLab project ID and token secret")
+	if secretURIs == nil {
+		fmt.Println("  2. Set up secret store: gosling lockbox create")
+	}
 	fmt.Println("  3. Validate: gosling validate")
 	fmt.Println("  4. Deploy: gosling deploy")
 
 	return nil
+}
+
+// storeFactory creates a SecretStore for the given provider configuration.
+// This is a package-level variable to allow test injection.
+var storeFactory = func(ctx context.Context, provider, folderID, region string) (lockbox.SecretStore, error) {
+	return newSecretStore(ctx, provider, folderID, region)
+}
+
+// runInteractiveSecretFlow guides the user through secret store setup.
+// Returns a map of secret URIs keyed by RequiredEntries keys, or nil for placeholder mode.
+func runInteractiveSecretFlow(eggName, provider, region, folderID string) (map[string]string, error) {
+	return runInteractiveSecretFlowWithReader(os.Stdin, eggName, provider, region, folderID)
+}
+
+// runInteractiveSecretFlowWithReader is the testable core of the interactive secret flow.
+// It reads user input from r instead of os.Stdin.
+func runInteractiveSecretFlowWithReader(r io.Reader, eggName, provider, region, folderID string) (map[string]string, error) {
+	reader := bufio.NewReader(r)
+
+	fmt.Print("Does a secret store already exist? [y/n]: ")
+	answer, err := reader.ReadString('\n')
+	if err != nil {
+		return nil, fmt.Errorf("reading input: %w", err)
+	}
+	answer = strings.TrimSpace(strings.ToLower(answer))
+
+	if answer == "y" || answer == "yes" {
+		// Existing secret store — prompt for identifier
+		var prompt string
+		if provider == "yandex" {
+			prompt = "Enter secret ID: "
+		} else {
+			prompt = "Enter secret name: "
+		}
+		fmt.Print(prompt)
+		identifier, err := reader.ReadString('\n')
+		if err != nil {
+			return nil, fmt.Errorf("reading input: %w", err)
+		}
+		identifier = strings.TrimSpace(identifier)
+		if identifier == "" {
+			return nil, fmt.Errorf("secret identifier cannot be empty")
+		}
+		return lockbox.GenerateAllURIs(provider, identifier), nil
+	}
+
+	// No existing secret store — offer to create one
+	fmt.Print("Create one now? [y/n]: ")
+	createAnswer, err := reader.ReadString('\n')
+	if err != nil {
+		return nil, fmt.Errorf("reading input: %w", err)
+	}
+	createAnswer = strings.TrimSpace(strings.ToLower(createAnswer))
+
+	if createAnswer == "y" || createAnswer == "yes" {
+		// Validate folder-id for Yandex
+		if provider == "yandex" && folderID == "" {
+			return nil, fmt.Errorf("--folder-id is required for Yandex Cloud secret store creation")
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		store, err := storeFactory(ctx, provider, folderID, region)
+		if err != nil {
+			return nil, err
+		}
+
+		params := lockbox.CreateParams{
+			Provider: provider,
+			EggName:  eggName,
+			FolderID: folderID,
+			Region:   region,
+		}
+
+		if err := lockbox.ValidateCreateInput(params); err != nil {
+			return nil, fmt.Errorf("invalid input for secret store creation: %w", err)
+		}
+
+		result, err := store.Create(ctx, params)
+		if err != nil {
+			return nil, err
+		}
+
+		fmt.Printf("✅ Created secret store (ID: %s)\n", result.ID)
+		for _, key := range lockbox.RequiredEntries() {
+			fmt.Printf("  %s\n", result.URIs[key])
+		}
+		return result.URIs, nil
+	}
+
+	// User declined — return nil for placeholder mode
+	fmt.Println("Skipping secret store creation. Placeholder URIs will be used.")
+	fmt.Println("Remember to set up secrets before deploying: gosling lockbox create")
+	return nil, nil
 }
 
 func runAddJob(cmd *cobra.Command, args []string) error {
@@ -255,7 +371,7 @@ func runAddMG(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func generateEggConfig(name, runnerType, provider, region string) string {
+func generateEggConfig(name, runnerType, provider, region string, secretURIs map[string]string) string {
 	// Determine default resources based on type
 	cpu := 2
 	memory := 4096
@@ -267,6 +383,35 @@ func generateEggConfig(name, runnerType, provider, region string) string {
 		memory = 2048
 		disk = 10
 		concurrent = 1
+	}
+
+	// Build secret attributes block
+	var secretBlock string
+	if len(secretURIs) > 0 {
+		// Real URIs — no TODO comments
+		secretBlock = fmt.Sprintf(`  gitlab_token_secret   = %q
+  gitlab_webhook_secret = %q
+  git_repo_url_secret   = %q`,
+			secretURIs["runner-token"],
+			secretURIs["webhook-secret"],
+			secretURIs["repo-url"],
+		)
+	} else {
+		// Placeholder URIs with TODO comments
+		var scheme string
+		if provider == "yandex" {
+			scheme = "yc-lockbox"
+		} else {
+			scheme = "aws-sm"
+		}
+		secretBlock = fmt.Sprintf(`  # TODO: Configure secret store — run 'gosling lockbox create' to provision
+  gitlab_token_secret   = "%s://TODO-set-secret-id/runner-token"
+  # TODO: Configure secret store — run 'gosling lockbox create' to provision
+  gitlab_webhook_secret = "%s://TODO-set-secret-id/webhook-secret"
+  # TODO: Configure secret store — run 'gosling lockbox create' to provision
+  git_repo_url_secret   = "%s://TODO-set-secret-id/repo-url"`,
+			scheme, scheme, scheme,
+		)
 	}
 
 	return fmt.Sprintf(`# Egg Configuration: %s
@@ -296,18 +441,16 @@ egg "%s" {
   gitlab {
     # TODO: Set your GitLab project ID
     project_id = 0
-
-    # TODO: Set your GitLab runner token secret
-    # Format: yc-lockbox://{secret-id}/{key} or aws-sm://{secret-name}/{key}
-    token_secret = "%s-lockbox://gitlab-tokens/%s-runner-token"
   }
+
+%s
 
   environment {
     DOCKER_DRIVER = "overlay2"
     # Add custom environment variables here
   }
 }
-`, name, runnerType, provider, name, runnerType, provider, region, cpu, memory, disk, concurrent, provider, name)
+`, name, runnerType, provider, name, runnerType, provider, region, cpu, memory, disk, concurrent, secretBlock)
 }
 
 func generateJobConfig(name, schedule string) string {

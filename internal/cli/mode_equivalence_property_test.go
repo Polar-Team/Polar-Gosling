@@ -100,7 +100,7 @@ func TestCLIModeEquivalence(t *testing.T) {
 				nonInteractiveEggPath := filepath.Join(tempDirNonInteractive, "Eggs", eggName, "config.fly")
 
 				// Generate config content (same for both modes)
-				configContent := generateEggConfig(eggName, eggType, provider, region)
+				configContent := generateEggConfig(eggName, eggType, provider, region, nil)
 
 				// Create egg directory and config file for interactive mode
 				interactiveEggDir := filepath.Join(tempDirInteractive, "Eggs", eggName)

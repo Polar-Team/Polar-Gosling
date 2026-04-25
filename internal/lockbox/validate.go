@@ -2,10 +2,30 @@ package lockbox
 
 import "fmt"
 
+// ValidateProvider checks that provider is a supported value ("yandex" or "aws").
+func ValidateProvider(provider string) error {
+	if provider != "yandex" && provider != "aws" {
+		return fmt.Errorf("invalid provider %q: must be 'yandex' or 'aws'", provider)
+	}
+	return nil
+}
+
+// ValidateProviderFlags checks provider value and provider-specific required fields
+// (folder-id for Yandex). Suitable for list/verify commands that don't need egg-name.
+func ValidateProviderFlags(provider, folderID string) error {
+	if err := ValidateProvider(provider); err != nil {
+		return err
+	}
+	if provider == "yandex" && folderID == "" {
+		return fmt.Errorf("folder-id is required for Yandex Cloud provider")
+	}
+	return nil
+}
+
 // ValidateCreateInput validates all inputs before any cloud API call.
 func ValidateCreateInput(params CreateParams) error {
-	if params.Provider != "yandex" && params.Provider != "aws" {
-		return fmt.Errorf("invalid provider %q: must be 'yandex' or 'aws'", params.Provider)
+	if err := ValidateProvider(params.Provider); err != nil {
+		return err
 	}
 	if params.EggName == "" {
 		return fmt.Errorf("egg-name is required")

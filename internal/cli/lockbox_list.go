@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"text/tabwriter"
+	"time"
 
+	"github.com/polar-gosling/gosling/internal/lockbox"
 	"github.com/spf13/cobra"
 )
 
@@ -39,14 +41,12 @@ func init() {
 }
 
 func runLockboxList(cmd *cobra.Command, args []string) error {
-	if listProvider != "yandex" && listProvider != "aws" {
-		return fmt.Errorf("invalid provider %q: must be 'yandex' or 'aws'", listProvider)
-	}
-	if listProvider == "yandex" && listFolderID == "" {
-		return fmt.Errorf("folder-id is required for Yandex Cloud provider")
+	if err := lockbox.ValidateProviderFlags(listProvider, listFolderID); err != nil {
+		return err
 	}
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
 	store, err := newSecretStore(ctx, listProvider, listFolderID, listRegion)
 	if err != nil {

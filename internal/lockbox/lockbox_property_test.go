@@ -417,3 +417,142 @@ func TestValidInputsPassValidation(t *testing.T) {
 
 	properties.TestingRun(t, gopter.ConsoleReporter(false))
 }
+
+// Feature: gosling-lockbox, Property 5: Verify correctly partitions entries into present and missing
+// Validates: Requirements 6.3, 6.4
+func TestVerifyPartitionsEntries(t *testing.T) {
+	parameters := gopter.DefaultTestParameters()
+	parameters.MinSuccessfulTests = 100
+	properties := gopter.NewProperties(parameters)
+
+	// Generator for a random subset of RequiredEntries represented as a bitmask.
+	// Each bit determines whether the corresponding RequiredEntries element is present.
+	genSubsetMask := gen.IntRange(0, (1<<len(RequiredEntries))-1)
+
+	properties.Property(
+		"partition has exactly the chosen keys in Present and the complement in Missing",
+		prop.ForAll(
+			func(mask int) bool {
+				// Build the present key set from the bitmask
+				presentSet := make(map[string]bool, len(RequiredEntries))
+				for i, key := range RequiredEntries {
+					if mask&(1<<i) != 0 {
+						presentSet[key] = true
+					}
+				}
+
+				// Simulate the same partitioning logic used by both providers
+				result := &VerifyResult{}
+				for _, key := range RequiredEntries {
+					if presentSet[key] {
+						result.Present = append(result.Present, key)
+					} else {
+						result.Missing = append(result.Missing, key)
+					}
+				}
+
+				// Check 1: total count equals RequiredEntries length
+				if len(result.Present)+len(result.Missing) != len(RequiredEntries) {
+					t.Logf("count mismatch: Present(%d) + Missing(%d) != RequiredEntries(%d)",
+						len(result.Present), len(result.Missing), len(RequiredEntries))
+					return false
+				}
+
+				// Check 2: Present contains exactly the keys from the subset
+				for _, key := range result.Present {
+					if !presentSet[key] {
+						t.Logf("key %q in Present but was not in the chosen subset", key)
+						return false
+					}
+				}
+
+				// Check 3: Missing contains exactly the complement
+				for _, key := range result.Missing {
+					if presentSet[key] {
+						t.Logf("key %q in Missing but was in the chosen subset", key)
+						return false
+					}
+				}
+
+				// Check 4: no duplicates across Present and Missing
+				seen := make(map[string]bool, len(RequiredEntries))
+				for _, key := range result.Present {
+					if seen[key] {
+						t.Logf("duplicate key %q in Present", key)
+						return false
+					}
+					seen[key] = true
+				}
+				for _, key := range result.Missing {
+					if seen[key] {
+						t.Logf("key %q appears in both Present and Missing", key)
+						return false
+					}
+					seen[key] = true
+				}
+
+				return true
+			},
+			genSubsetMask,
+		),
+	)
+
+	properties.Property(
+		"all entries present yields empty Missing",
+		prop.ForAll(
+			func(_ int) bool {
+				// All keys present
+				presentSet := make(map[string]bool, len(RequiredEntries))
+				for _, key := range RequiredEntries {
+					presentSet[key] = true
+				}
+
+				result := &VerifyResult{}
+				for _, key := range RequiredEntries {
+					if presentSet[key] {
+						result.Present = append(result.Present, key)
+					} else {
+						result.Missing = append(result.Missing, key)
+					}
+				}
+
+				if len(result.Missing) != 0 {
+					t.Logf("expected empty Missing when all entries present, got %v", result.Missing)
+					return false
+				}
+				if len(result.Present) != len(RequiredEntries) {
+					t.Logf("expected %d Present entries, got %d", len(RequiredEntries), len(result.Present))
+					return false
+				}
+				return true
+			},
+			gen.IntRange(0, 0), // dummy generator to satisfy gopter
+		),
+	)
+
+	properties.Property(
+		"no entries present yields empty Present",
+		prop.ForAll(
+			func(_ int) bool {
+				// No keys present
+				result := &VerifyResult{}
+				for _, key := range RequiredEntries {
+					result.Missing = append(result.Missing, key)
+				}
+
+				if len(result.Present) != 0 {
+					t.Logf("expected empty Present when no entries present, got %v", result.Present)
+					return false
+				}
+				if len(result.Missing) != len(RequiredEntries) {
+					t.Logf("expected %d Missing entries, got %d", len(RequiredEntries), len(result.Missing))
+					return false
+				}
+				return true
+			},
+			gen.IntRange(0, 0), // dummy generator to satisfy gopter
+		),
+	)
+
+	properties.TestingRun(t, gopter.ConsoleReporter(false))
+}

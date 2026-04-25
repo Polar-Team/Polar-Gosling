@@ -127,32 +127,32 @@ All code goes in `dev-new-features/internal/lockbox/` (new package) and `dev-new
 - [x] 6. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 7. Integrate lockbox into `gosling add egg --interactive`
-  - [ ] 7.1 Modify `internal/cli/add.go` to add interactive secret store flow
+- [-] 7. Integrate lockbox into `gosling add egg --interactive`
+  - [x] 7.1 Modify `internal/cli/add.go` to add interactive secret store flow
     - After egg name/provider/region collection, prompt: "Does a secret store already exist? [y/n]"
     - If yes: prompt for secret ID (YC) or secret name (AWS), call `GenerateAllURIs` to build URIs
     - If no: prompt "Create one now? [y/n]"; if yes, call `SecretStore.Create()` programmatically and use returned URIs; if no, use placeholder URIs with TODO comments
     - Pass real or placeholder URIs to config.fly generation
     - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5_
 
-  - [ ] 7.2 Update `generateEggConfig` in `add.go` to use correct secret attribute names
+  - [x] 7.2 Update `generateEggConfig` in `add.go` to use correct secret attribute names
     - Replace current `gitlab.token_secret` with `gitlab_token_secret`, `gitlab_webhook_secret`, and `git_repo_url_secret` as top-level egg block attributes
     - When real URIs provided: emit attributes without TODO comments
     - When placeholder URIs used: emit TODO comments above each secret attribute
     - _Requirements: 7.6, 10.1, 10.2, 10.3_
 
-  - [ ]* 7.3 Write property test: Config.fly includes all secret attributes (Property 6)
+  - [x] 7.3 Write property test: Config.fly includes all secret attributes (Property 6)
     - **Property 6: Config.fly generation includes all secret attributes**
     - Generate random valid provider/identifier pairs, verify generated config contains `gitlab_token_secret`, `gitlab_webhook_secret`, and `git_repo_url_secret` each with correctly formatted Secret URI
     - **Validates: Requirements 7.6, 10.1**
 
-  - [ ]* 7.4 Write unit tests for interactive flow
+  - [x] 7.4 Write unit tests for interactive flow
     - Test interactive flow with simulated stdin: user says secret exists → prompts for ID → generates URIs
     - Test interactive flow: user says no secret → declines creation → placeholder URIs with TODOs
     - Test non-interactive mode: no stdin reads when all flags provided
     - _Requirements: 7.1, 7.2, 7.5, 8.2_
 
-- [ ] 8. Final checkpoint - Ensure all tests pass
+- [x] 8. Final checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes

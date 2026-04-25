@@ -19,8 +19,9 @@ func GenerateSecretURI(provider, identifier, key string) string {
 
 // GenerateAllURIs returns a map of key -> URI for all RequiredEntries.
 func GenerateAllURIs(provider, identifier string) map[string]string {
-	uris := make(map[string]string, len(RequiredEntries))
-	for _, key := range RequiredEntries {
+	entries := RequiredEntries()
+	uris := make(map[string]string, len(entries))
+	for _, key := range entries {
 		uris[key] = GenerateSecretURI(provider, identifier, key)
 	}
 	return uris

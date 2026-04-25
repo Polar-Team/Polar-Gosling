@@ -425,17 +425,19 @@ func TestVerifyPartitionsEntries(t *testing.T) {
 	parameters.MinSuccessfulTests = 100
 	properties := gopter.NewProperties(parameters)
 
-	// Generator for a random subset of RequiredEntries represented as a bitmask.
-	// Each bit determines whether the corresponding RequiredEntries element is present.
-	genSubsetMask := gen.IntRange(0, (1<<len(RequiredEntries))-1)
+	entries := RequiredEntries()
+
+	// Generator for a random subset of entries represented as a bitmask.
+	// Each bit determines whether the corresponding entry is present.
+	genSubsetMask := gen.IntRange(0, (1<<len(entries))-1)
 
 	properties.Property(
 		"partition has exactly the chosen keys in Present and the complement in Missing",
 		prop.ForAll(
 			func(mask int) bool {
 				// Build the present key set from the bitmask
-				presentSet := make(map[string]bool, len(RequiredEntries))
-				for i, key := range RequiredEntries {
+				presentSet := make(map[string]bool, len(entries))
+				for i, key := range entries {
 					if mask&(1<<i) != 0 {
 						presentSet[key] = true
 					}
@@ -443,7 +445,7 @@ func TestVerifyPartitionsEntries(t *testing.T) {
 
 				// Simulate the same partitioning logic used by both providers
 				result := &VerifyResult{}
-				for _, key := range RequiredEntries {
+				for _, key := range entries {
 					if presentSet[key] {
 						result.Present = append(result.Present, key)
 					} else {
@@ -451,10 +453,10 @@ func TestVerifyPartitionsEntries(t *testing.T) {
 					}
 				}
 
-				// Check 1: total count equals RequiredEntries length
-				if len(result.Present)+len(result.Missing) != len(RequiredEntries) {
-					t.Logf("count mismatch: Present(%d) + Missing(%d) != RequiredEntries(%d)",
-						len(result.Present), len(result.Missing), len(RequiredEntries))
+				// Check 1: total count equals entries length
+				if len(result.Present)+len(result.Missing) != len(entries) {
+					t.Logf("count mismatch: Present(%d) + Missing(%d) != entries(%d)",
+						len(result.Present), len(result.Missing), len(entries))
 					return false
 				}
 
@@ -475,7 +477,7 @@ func TestVerifyPartitionsEntries(t *testing.T) {
 				}
 
 				// Check 4: no duplicates across Present and Missing
-				seen := make(map[string]bool, len(RequiredEntries))
+				seen := make(map[string]bool, len(entries))
 				for _, key := range result.Present {
 					if seen[key] {
 						t.Logf("duplicate key %q in Present", key)
@@ -502,13 +504,13 @@ func TestVerifyPartitionsEntries(t *testing.T) {
 		prop.ForAll(
 			func(_ int) bool {
 				// All keys present
-				presentSet := make(map[string]bool, len(RequiredEntries))
-				for _, key := range RequiredEntries {
+				presentSet := make(map[string]bool, len(entries))
+				for _, key := range entries {
 					presentSet[key] = true
 				}
 
 				result := &VerifyResult{}
-				for _, key := range RequiredEntries {
+				for _, key := range entries {
 					if presentSet[key] {
 						result.Present = append(result.Present, key)
 					} else {
@@ -520,8 +522,8 @@ func TestVerifyPartitionsEntries(t *testing.T) {
 					t.Logf("expected empty Missing when all entries present, got %v", result.Missing)
 					return false
 				}
-				if len(result.Present) != len(RequiredEntries) {
-					t.Logf("expected %d Present entries, got %d", len(RequiredEntries), len(result.Present))
+				if len(result.Present) != len(entries) {
+					t.Logf("expected %d Present entries, got %d", len(entries), len(result.Present))
 					return false
 				}
 				return true
@@ -536,14 +538,14 @@ func TestVerifyPartitionsEntries(t *testing.T) {
 			func(_ int) bool {
 				// No keys present
 				result := &VerifyResult{}
-				result.Missing = append(result.Missing, RequiredEntries...)
+				result.Missing = append(result.Missing, entries...)
 
 				if len(result.Present) != 0 {
 					t.Logf("expected empty Present when no entries present, got %v", result.Present)
 					return false
 				}
-				if len(result.Missing) != len(RequiredEntries) {
-					t.Logf("expected %d Missing entries, got %d", len(RequiredEntries), len(result.Missing))
+				if len(result.Missing) != len(entries) {
+					t.Logf("expected %d Missing entries, got %d", len(entries), len(result.Missing))
 					return false
 				}
 				return true

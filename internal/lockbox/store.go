@@ -5,8 +5,15 @@ import (
 	"time"
 )
 
-// RequiredEntries defines the secret keys every egg needs.
-var RequiredEntries = []string{"runner-token", "webhook-secret", "repo-url"}
+// requiredEntries is the internal backing slice — not exported to prevent mutation.
+var requiredEntries = []string{"runner-token", "webhook-secret", "repo-url"}
+
+// RequiredEntries returns a copy of the required secret entry keys every egg needs.
+func RequiredEntries() []string {
+	out := make([]string, len(requiredEntries))
+	copy(out, requiredEntries)
+	return out
+}
 
 // CreateParams holds input for creating a new secret store.
 type CreateParams struct {

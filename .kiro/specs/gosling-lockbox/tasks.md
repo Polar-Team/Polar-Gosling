@@ -87,14 +87,14 @@ All code goes in `dev-new-features/internal/lockbox/` (new package) and `dev-new
 - [x] 4. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 5. Implement CLI commands
-  - [ ] 5.1 Create `internal/cli/lockbox.go` with parent `lockbox` command
+- [x] 5. Implement CLI commands
+  - [x] 5.1 Create `internal/cli/lockbox.go` with parent `lockbox` command
     - Register `lockboxCmd` as subcommand of `rootCmd` with `Use: "lockbox"` and `Short: "Manage cloud secret stores for Egg configurations"`
     - Display usage help with subcommand list when run without subcommand
     - Register `create`, `list`, `verify` as child commands
     - _Requirements: 1.1, 1.2, 1.3_
 
-  - [ ] 5.2 Create `internal/cli/lockbox_create.go` with `lockbox create` command
+  - [x] 5.2 Create `internal/cli/lockbox_create.go` with `lockbox create` command
     - Define flags: `--provider` (required), `--egg-name` (required), `--folder-id` (YC), `--region` (AWS)
     - Call `ValidateCreateInput` before any cloud API call
     - Instantiate the correct `SecretStore` based on provider flag
@@ -103,28 +103,28 @@ All code goes in `dev-new-features/internal/lockbox/` (new package) and `dev-new
     - Support fully non-interactive execution when all flags provided
     - _Requirements: 2.1, 2.6, 2.7, 3.1, 3.6, 3.7, 4.1, 4.2, 4.3, 4.4, 4.5, 8.1, 8.2, 8.3_
 
-  - [ ] 5.3 Create `internal/cli/lockbox_list.go` with `lockbox list` command
+  - [x] 5.3 Create `internal/cli/lockbox_list.go` with `lockbox list` command
     - Define flags: `--provider` (required), `--folder-id` (YC), `--region` (AWS)
     - Call `SecretStore.List()` and display name, ID/ARN, egg-name, creation date for each result
     - Print "no Polar Gosling secret stores found" when list is empty
     - Print errors to stderr with non-zero exit code
     - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
 
-  - [ ] 5.4 Create `internal/cli/lockbox_verify.go` with `lockbox verify` command
+  - [x] 5.4 Create `internal/cli/lockbox_verify.go` with `lockbox verify` command
     - Define flags: `--provider` (required), `--secret-id` (YC), `--secret-name` (AWS), `--folder-id` (YC), `--region` (AWS)
     - Call `SecretStore.Verify()` and print success message listing found entries (exit 0) or present/missing report (exit non-zero)
     - Handle secret-not-found with descriptive error
     - Print errors to stderr with non-zero exit code
     - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6_
 
-  - [ ]* 5.5 Write unit tests for CLI commands
+  - [x] 5.5 Write unit tests for CLI commands
     - Test command registration: `lockbox` is subcommand of root with `create`, `list`, `verify` children
     - Test help output: `gosling lockbox` shows subcommand list
     - Test flag validation: missing required flags produce errors
     - Test error output goes to stderr
     - _Requirements: 1.1, 1.2, 1.3, 8.1, 8.2_
 
-- [ ] 6. Checkpoint - Ensure all tests pass
+- [x] 6. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 7. Integrate lockbox into `gosling add egg --interactive`

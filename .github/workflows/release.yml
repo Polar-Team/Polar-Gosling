@@ -123,7 +123,10 @@ jobs:
 
       - name: Download release artifacts
         run: |
-          gh release download ${{ github.ref_name }} --pattern "*.sig" --dir ./dist
+          gh release download ${{ github.ref_name }} \
+            --pattern "*.tar.gz" --pattern "*.zip" \
+            --pattern "*.sig" --pattern "*.pem" \
+            --dir ./dist
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -134,4 +137,21 @@ jobs:
             echo "No signatures found"
             exit 1
           fi
-          echo "✅ Release artifacts signed and verified successfully"
+
+          # Verify each signed artifact with its certificate
+          find ./dist -type f \( -name "*.tar.gz" -o -name "*.zip" \) | while read file; do
+            sig="${file}.sig"
+            cert="${file}.pem"
+            if [ -f "$sig" ] && [ -f "$cert" ]; then
+              echo "Verifying $(basename "$file")"
+              cosign verify-blob "$file" \
+                --signature "$sig" \
+                --certificate "$cert" \
+                --certificate-identity-regexp "https://github.com/${{ github.repository }}/" \
+                --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+            else
+              echo "Missing sig or cert for $(basename "$file"), skipping"
+            fi
+          done
+
+          echo "Release artifacts signed and verified successfully"

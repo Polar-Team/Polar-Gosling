@@ -141,13 +141,14 @@ func TestIsValidEggName_ValidNames(t *testing.T) {
 
 func TestGenerateAllURIs_ReturnsExactlyRequiredEntries(t *testing.T) {
 	providers := []string{"yandex", "aws"}
+	expected := RequiredEntries()
 	for _, provider := range providers {
 		uris := GenerateAllURIs(provider, "test-id")
-		if len(uris) != len(RequiredEntries) {
+		if len(uris) != len(expected) {
 			t.Errorf("GenerateAllURIs(%q, ...) returned %d entries, want %d",
-				provider, len(uris), len(RequiredEntries))
+				provider, len(uris), len(expected))
 		}
-		for _, key := range RequiredEntries {
+		for _, key := range expected {
 			if _, ok := uris[key]; !ok {
 				t.Errorf("GenerateAllURIs(%q, ...) missing key %q", provider, key)
 			}

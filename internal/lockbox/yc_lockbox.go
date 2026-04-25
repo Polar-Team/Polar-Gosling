@@ -36,8 +36,8 @@ func (s *YCLockboxStore) Create(ctx context.Context, params CreateParams) (*Crea
 	}
 
 	// Build payload entries with empty placeholder values
-	entries := make([]*lockboxpb.PayloadEntryChange, 0, len(RequiredEntries))
-	for _, key := range RequiredEntries {
+	entries := make([]*lockboxpb.PayloadEntryChange, 0, len(requiredEntries))
+	for _, key := range requiredEntries {
 		entries = append(entries, &lockboxpb.PayloadEntryChange{
 			Key:   key,
 			Value: &lockboxpb.PayloadEntryChange_TextValue{TextValue: ""},
@@ -63,7 +63,10 @@ func (s *YCLockboxStore) Create(ctx context.Context, params CreateParams) (*Crea
 	if err != nil {
 		return nil, fmt.Errorf("getting Lockbox secret response: %w", err)
 	}
-	secret := res.(*lockboxpb.Secret)
+	secret, ok := res.(*lockboxpb.Secret)
+	if !ok {
+		return nil, fmt.Errorf("unexpected response type %T from Lockbox secret creation", res)
+	}
 
 	return &CreateResult{
 		ID:   secret.Id,
@@ -125,7 +128,7 @@ func (s *YCLockboxStore) Verify(ctx context.Context, secretRef string) (*VerifyR
 	}
 
 	result := &VerifyResult{}
-	for _, key := range RequiredEntries {
+	for _, key := range requiredEntries {
 		if presentKeys[key] {
 			result.Present = append(result.Present, key)
 		} else {

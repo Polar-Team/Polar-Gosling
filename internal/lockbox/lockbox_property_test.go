@@ -536,9 +536,7 @@ func TestVerifyPartitionsEntries(t *testing.T) {
 			func(_ int) bool {
 				// No keys present
 				result := &VerifyResult{}
-				for _, key := range RequiredEntries {
-					result.Missing = append(result.Missing, key)
-				}
+				result.Missing = append(result.Missing, RequiredEntries...)
 
 				if len(result.Present) != 0 {
 					t.Logf("expected empty Present when no entries present, got %v", result.Present)

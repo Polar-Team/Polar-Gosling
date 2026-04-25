@@ -57,34 +57,34 @@ All code goes in `dev-new-features/internal/lockbox/` (new package) and `dev-new
 - [x] 2. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 3. Implement cloud provider SecretStore backends
-  - [ ] 3.1 Create `internal/lockbox/yc_lockbox.go` implementing `YCLockboxStore`
+- [x] 3. Implement cloud provider SecretStore backends
+  - [x] 3.1 Create `internal/lockbox/yc_lockbox.go` implementing `YCLockboxStore`
     - Implement `Create`: call `sdk.Lockbox().Secret().Create()` with name `pg-{egg}-secrets`, labels `polar-gosling: true` + `egg-name: {egg}`, and three empty-string text entries for `RequiredEntries`; check for existing secret first and return descriptive error if duplicate
     - Implement `List`: call `sdk.Lockbox().Secret().List()` with folder filter, filter results by `polar-gosling: true` label, map to `[]SecretInfo`
     - Implement `Verify`: call `sdk.Lockbox().Payload().Get()` to retrieve entry keys, partition into present/missing against `RequiredEntries`
     - Follow SDK patterns from `internal/deployer/yandex_client.go`
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 5.1, 5.3, 6.1, 6.3, 6.4, 6.5, 6.6_
 
-  - [ ] 3.2 Create `internal/lockbox/aws_sm.go` implementing `AWSSecretsManagerStore`
+  - [x] 3.2 Create `internal/lockbox/aws_sm.go` implementing `AWSSecretsManagerStore`
     - Implement `Create`: call `secretsmanager.CreateSecret()` with name `polar-gosling/{egg}`, JSON string value with three empty-string keys, tags `polar-gosling: true` + `egg-name: {egg}`; check for existing secret first and return descriptive error if duplicate
     - Implement `List`: call `secretsmanager.ListSecrets()` with tag filter `polar-gosling: true`, map to `[]SecretInfo`
     - Implement `Verify`: call `secretsmanager.GetSecretValue()`, parse JSON, partition keys into present/missing against `RequiredEntries`
     - Follow SDK patterns from `internal/deployer/aws_client.go`
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 5.2, 5.3, 6.2, 6.3, 6.4, 6.5, 6.6_
 
-  - [ ]* 3.3 Write property test: Verify partitions entries correctly (Property 5)
+  - [x] 3.3 Write property test: Verify partitions entries correctly (Property 5)
     - **Property 5: Verify correctly partitions entries into present and missing**
     - Generate random subsets of `RequiredEntries` as present keys, build a mock payload, verify `VerifyResult` has exactly those keys in `Present` and the complement in `Missing`, with `len(Present) + len(Missing) == len(RequiredEntries)`
     - **Validates: Requirements 6.3, 6.4**
 
-  - [ ]* 3.4 Write integration tests with mock SDK clients
+  - [x] 3.4 Write integration tests with mock SDK clients
     - Create mock implementations of YC SDK and AWS SM clients
     - Test end-to-end create → verify flow for each provider
     - Test list with mixed tagged/untagged secrets
     - Test error scenarios: API errors, duplicate secrets, secret not found
     - _Requirements: 2.7, 2.8, 3.7, 3.8, 5.4, 5.5, 6.5, 6.6_
 
-- [ ] 4. Checkpoint - Ensure all tests pass
+- [x] 4. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 5. Implement CLI commands

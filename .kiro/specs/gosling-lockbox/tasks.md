@@ -8,53 +8,53 @@ All code goes in `dev-new-features/internal/lockbox/` (new package) and `dev-new
 
 ## Tasks
 
-- [ ] 1. Create the lockbox package with core interfaces and types
-  - [ ] 1.1 Create `internal/lockbox/store.go` with `SecretStore` interface, `CreateParams`, `CreateResult`, `SecretInfo`, `VerifyResult` types, and `RequiredEntries` variable
+- [x] 1. Create the lockbox package with core interfaces and types
+  - [x] 1.1 Create `internal/lockbox/store.go` with `SecretStore` interface, `CreateParams`, `CreateResult`, `SecretInfo`, `VerifyResult` types, and `RequiredEntries` variable
     - Define the `SecretStore` interface with `Create`, `List`, and `Verify` methods
     - Define all supporting structs as specified in the design
     - _Requirements: 2.1, 2.2, 3.1, 3.2, 5.1, 5.2, 6.1, 6.2_
 
-  - [ ] 1.2 Create `internal/lockbox/validate.go` with `ValidateCreateInput` and `IsValidEggName` functions
+  - [x] 1.2 Create `internal/lockbox/validate.go` with `ValidateCreateInput` and `IsValidEggName` functions
     - Implement provider validation (must be "yandex" or "aws")
     - Implement egg-name validation (non-empty, alphanumeric + hyphens + underscores)
     - Implement provider-specific required field checks (folder-id for Yandex)
     - Allow empty region for AWS (SDK default fallback)
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
 
-  - [ ] 1.3 Create `internal/lockbox/uri.go` with `GenerateSecretURI`, `GenerateAllURIs`, `ParseSecretURI`, and `SecretNameForProvider` functions
+  - [x] 1.3 Create `internal/lockbox/uri.go` with `GenerateSecretURI`, `GenerateAllURIs`, `ParseSecretURI`, and `SecretNameForProvider` functions
     - `GenerateSecretURI`: build `yc-lockbox://{id}/{key}` or `aws-sm://{name}/{key}`
     - `GenerateAllURIs`: generate URIs for all `RequiredEntries`
     - `ParseSecretURI`: split URI into (scheme, identifier, key) with error handling
     - `SecretNameForProvider`: return `pg-{egg}-secrets` (YC) or `polar-gosling/{egg}` (AWS)
     - _Requirements: 9.1, 9.2, 9.3, 2.4, 3.4_
 
-  - [ ]* 1.4 Write property test: Secret naming convention (Property 1)
+  - [x] 1.4 Write property test: Secret naming convention (Property 1)
     - **Property 1: Secret naming convention is deterministic and follows provider patterns**
     - Generate random valid egg names, verify `SecretNameForProvider` output matches `pg-{eggName}-secrets` for Yandex and `polar-gosling/{eggName}` for AWS, and egg name appears verbatim
     - **Validates: Requirements 2.4, 3.4**
 
-  - [ ]* 1.5 Write property test: Secret URI round-trip (Property 2)
+  - [x] 1.5 Write property test: Secret URI round-trip (Property 2)
     - **Property 2: Secret URI generation/parse round-trip**
     - Generate random (provider, identifier, key) tuples where identifier has no `://` and key has no `/`, verify `ParseSecretURI(GenerateSecretURI(...))` returns original values with correct scheme
     - **Validates: Requirements 9.1, 9.2, 9.3**
 
-  - [ ]* 1.6 Write property test: Invalid inputs rejected (Property 3)
+  - [x] 1.6 Write property test: Invalid inputs rejected (Property 3)
     - **Property 3: Invalid inputs are rejected before cloud API calls**
     - Generate `CreateParams` with at least one invalid field (bad provider, empty egg-name, invalid chars, missing folder-id for Yandex), verify `ValidateCreateInput` returns non-nil error
     - **Validates: Requirements 4.1, 4.2, 4.3, 4.4**
 
-  - [ ]* 1.7 Write property test: Valid inputs pass validation (Property 4)
+  - [x] 1.7 Write property test: Valid inputs pass validation (Property 4)
     - **Property 4: Valid inputs pass validation**
     - Generate fully valid `CreateParams` (valid provider, valid egg-name chars, folder-id present for Yandex), verify `ValidateCreateInput` returns nil
     - **Validates: Requirements 4.1, 4.2, 4.3, 4.4, 4.5**
 
-  - [ ]* 1.8 Write unit tests for URI helpers and validation edge cases
+  - [x] 1.8 Write unit tests for URI helpers and validation edge cases
     - Test `ParseSecretURI` with malformed URIs (missing `://`, missing key, empty identifier)
     - Test `IsValidEggName` with empty string, special characters, valid names
     - Test `GenerateAllURIs` returns exactly `len(RequiredEntries)` entries
     - _Requirements: 4.1, 4.2, 4.3, 9.1, 9.2, 9.3_
 
-- [ ] 2. Checkpoint - Ensure all tests pass
+- [x] 2. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 3. Implement cloud provider SecretStore backends

@@ -46,15 +46,15 @@ func init() {
 	initCmd.Flags().StringVar(&branchName, "branch", "main", "Default branch name")
 }
 
-// TODO: Placeholder for new functions
 // isTerminal reports whether stdin is connected to a terminal.
-// func isTerminal() bool {
-// 	fi, err := os.Stdin.Stat()
-// 	if err != nil {
-// 		return false
-// 	}
-// 	return fi.Mode()&os.ModeCharDevice != 0
-// }
+// It is a variable so tests can override the check.
+var isTerminal = func() bool {
+	fi, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	return fi.Mode()&os.ModeCharDevice != 0
+}
 
 // promptWithDefault prints a prompt to stdout and reads a line from stdin.
 // If the user input is empty or whitespace-only, it returns defaultVal.
@@ -86,16 +86,58 @@ func initGitRepo(dir string) error {
 	return nil
 }
 
-// TODO: Placeholder for new functions
 // addGitRemote adds a named remote to the git repository at dir.
-// func addGitRemote(dir, name, url string) error {
-// 	cmd := exec.Command("git", "remote", "add", name, url)
-// 	cmd.Dir = dir
-// 	if err := cmd.Run(); err != nil {
-// 		return fmt.Errorf("failed to add upstream remote: %w", err)
-// 	}
-// 	return nil
-// }
+func addGitRemote(dir, name, url string) error {
+	var stderr bytes.Buffer
+	cmd := exec.Command("git", "remote", "add", name, url)
+	cmd.Dir = dir
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(stderr.String())
+		if msg != "" {
+			return fmt.Errorf("failed to add upstream remote: %w: %s", err, msg)
+		}
+		return fmt.Errorf("failed to add upstream remote: %w", err)
+	}
+	return nil
+}
+
+// configureUpstreamRemote handles upstream remote configuration for the Nest repository.
+// It uses flag values directly if --remote-url is provided, otherwise falls back to
+// interactive prompts when stdin is a terminal, or silently skips in non-interactive mode.
+//
+// Note: branchName is captured here for the confirmation message and future use
+// (e.g., `git push -u <remote> <branch>` in next-steps output) but is not passed
+// to any git command at this stage — `git remote add` does not accept a branch argument.
+func configureUpstreamRemote(dir string) error {
+	var name, url, branch string
+
+	if remoteURL != "" {
+		// Flag-based: use flag values directly, skip prompts
+		name = remoteName
+		url = remoteURL
+		branch = branchName
+	} else if isTerminal() {
+		// Interactive: prompt for remote name, URL, and branch
+		name = promptWithDefault(fmt.Sprintf("  Remote name [%s]: ", remoteName), remoteName)
+		url = promptWithDefault("  Remote URL: ", "")
+		if url == "" {
+			fmt.Println("  No remote URL provided — skipping upstream remote configuration.")
+			return nil
+		}
+		branch = promptWithDefault(fmt.Sprintf("  Branch name [%s]: ", branchName), branchName)
+	} else {
+		// Non-terminal, no flag: skip silently
+		return nil
+	}
+
+	if err := addGitRemote(dir, name, url); err != nil {
+		return err
+	}
+
+	fmt.Printf("  ✓ Configured upstream remote \"%s\" → %s (branch: %s)\n", name, url, branch)
+	return nil
+}
 
 func runInit(cmd *cobra.Command, args []string) error {
 	// Determine the target path
@@ -239,6 +281,12 @@ Thumbs.db
 	} else {
 		fmt.Println("  ✓ Git repository already exists, skipping init")
 	}
+
+	// Configure upstream remote (only after successful git init)
+	if err := configureUpstreamRemote(absPath); err != nil {
+		return err
+	}
+
 	fmt.Println("\n✅ Nest repository initialized successfully!")
 	fmt.Println("\nNext steps:")
 	fmt.Println("  1. Add an Egg configuration: gosling add egg <name>")

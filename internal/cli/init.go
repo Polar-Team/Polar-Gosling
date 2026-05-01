@@ -102,6 +102,15 @@ func addGitRemote(dir, name, url string) error {
 	return nil
 }
 
+// remoteConfig holds the result of upstream remote configuration so that
+// the caller can tailor success output and next-steps messaging.
+type remoteConfig struct {
+	Configured bool   // true when a remote was actually added
+	Name       string // remote name (e.g. "main")
+	URL        string // remote URL
+	Branch     string // branch name (e.g. "main")
+}
+
 // configureUpstreamRemote handles upstream remote configuration for the Nest repository.
 // It uses flag values directly if --remote-url is provided, otherwise falls back to
 // interactive prompts when stdin is a terminal, or silently skips in non-interactive mode.
@@ -109,7 +118,7 @@ func addGitRemote(dir, name, url string) error {
 // Note: branchName is captured here for the confirmation message and future use
 // (e.g., `git push -u <remote> <branch>` in next-steps output) but is not passed
 // to any git command at this stage — `git remote add` does not accept a branch argument.
-func configureUpstreamRemote(dir string) error {
+func configureUpstreamRemote(dir string) (remoteConfig, error) {
 	var name, url, branch string
 
 	if remoteURL != "" {
@@ -123,20 +132,20 @@ func configureUpstreamRemote(dir string) error {
 		url = promptWithDefault("  Remote URL: ", "")
 		if url == "" {
 			fmt.Println("  No remote URL provided — skipping upstream remote configuration.")
-			return nil
+			return remoteConfig{}, nil
 		}
 		branch = promptWithDefault(fmt.Sprintf("  Branch name [%s]: ", branchName), branchName)
 	} else {
 		// Non-terminal, no flag: skip silently
-		return nil
+		return remoteConfig{}, nil
 	}
 
 	if err := addGitRemote(dir, name, url); err != nil {
-		return err
+		return remoteConfig{}, err
 	}
 
 	fmt.Printf("  ✓ Configured upstream remote \"%s\" → %s (branch: %s)\n", name, url, branch)
-	return nil
+	return remoteConfig{Configured: true, Name: name, URL: url, Branch: branch}, nil
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
@@ -283,38 +292,58 @@ Thumbs.db
 	}
 
 	// Configure upstream remote (only after successful git init)
-	if err := configureUpstreamRemote(absPath); err != nil {
+	rc, err := configureUpstreamRemote(absPath)
+	if err != nil {
 		return err
 	}
 
 	fmt.Println("\n✅ Nest repository initialized successfully!")
+
+	if rc.Configured {
+		fmt.Printf("\n  Remote: %s → %s\n", rc.Name, rc.URL)
+	}
+
 	fmt.Println("\nNext steps:")
-	fmt.Println("  1. Add an Egg configuration: gosling add egg <name>")
-	fmt.Println("  2. Customize UglyFox policies: edit UF/config.fly")
-	fmt.Println("  3. Customize MotherGoose infra: edit MG/config.fly")
-	fmt.Println("  4. Validate your configuration: gosling validate")
+	step := 1
+	if rc.Configured {
+		fmt.Printf("  %d. Push to remote: git push -u %s %s\n", step, rc.Name, rc.Branch)
+		step++
+	} else {
+		fmt.Printf("  %d. Add a remote: git remote add <name> <url>\n", step)
+		step++
+	}
+	fmt.Printf("  %d. Add an Egg configuration: gosling add egg <name>\n", step)
+	step++
+	fmt.Printf("  %d. Customize UglyFox policies: edit UF/config.fly\n", step)
+	step++
+	fmt.Printf("  %d. Customize MotherGoose infra: edit MG/config.fly\n", step)
+	step++
+	fmt.Printf("  %d. Validate your configuration: gosling validate\n", step)
 
 	return nil
 }
 
 func defaultUglyFoxConfig() string {
-	return `# UglyFox Configuration: defaultUglyfox
+	return `# UglyFox Configuration
 # Runner lifecycle management: pruning policies and Apex/Nadir pool rules
 
-uglyfox {
+uglyfox "default" {
+  mothergoose = "default"
+
   pruning {
     failed_threshold = 3
-    check_interval   = "5m"
     max_age          = "24h"
+    check_interval   = "5m"
   }
 
   runners_condition "default" {
-    # TODO: list the egg names this condition applies to
     eggs_entities = ["my-app"]
 
     apex {
-      max_count = 5
-      min_count = 1
+      max_count        = 5
+      min_count        = 1
+      cpu_threshold    = 80
+      memory_threshold = 70
     }
 
     nadir {
@@ -323,71 +352,72 @@ uglyfox {
       idle_timeout = "30m"
     }
   }
+
+  policies {
+    rule "terminate_old_failed" {
+      condition = "failed_count >= 3 AND age > 1h"
+      action    = "terminate"
+    }
+  }
 }
 `
 }
 
 func defaultMotherGooseConfig() string {
-	return `# MotherGoose Infrastructure Configuration: defaultMothergoose
-# API Gateway, serverless containers, message queues, cloud triggers, database, storage
+	return `# MotherGoose Infrastructure Configuration
+# Cloud provider, API Gateway, serverless containers, queues, triggers, database, storage
 
-mothergoose {
+mothergoose "default" {
+  cloud {
+    provider     = "yandex"
+    yc_folder_id = "b1gxxxxxxxxxxxxxxx"
+    yc_cloud_id  = "b1gyyyyyyyyyyyyyyy"
+  }
+
   api_gateway {
-    name         = "polar-gosling-api"
-    openapi_spec = "openapi.yaml"
+    name            = "polar-gosling-gw"
+    description     = "Main API gateway"
+    service_account = "mg-sa"
   }
 
   fastapi_app {
-    name    = "mothergoose-api"
-    runtime = "python312"
-    memory  = 512
-    timeout = 30
+    name              = "mothergoose-api"
+    image             = "ghcr.io/polar-team/mothergoose:latest"
+    memory            = 512
+    cores             = 1
+    execution_timeout = "60s"
+    concurrency       = 4
+    service_account   = "mg-sa"
   }
 
   celery_workers {
-    name    = "mothergoose-celery"
-    runtime = "python312"
-    memory  = 1024
-    timeout = 300
+    memory            = 1024
+    cores             = 2
+    execution_timeout = "300s"
+    concurrency       = 2
   }
 
-  uglyfox_workers {
-    name    = "uglyfox-celery"
-    runtime = "python312"
-    memory  = 512
-    timeout = 180
+  git_sync_trigger {
+    schedule        = "*/5 * * * *"
+    service_account = "mg-sa"
   }
 
-  message_queues {
-    webhook_queue {
-      name               = "mothergoose-webhooks"
-      visibility_timeout = 300
+  mothergoose_queues {
+    task_queue {
+      name               = "mg-tasks"
+      visibility_timeout = 30
+      message_retention  = 86400
     }
-
-    uglyfox_queue {
-      name               = "uglyfox-tasks"
-      visibility_timeout = 180
-    }
-  }
-
-  triggers {
-    git_sync {
-      name     = "git-sync-trigger"
-      schedule = "*/5 * * * *"
-      endpoint = "/internal/sync-git"
-    }
-
-    health_check {
-      name     = "uglyfox-health-trigger"
-      schedule = "*/10 * * * *"
-      endpoint = "/internal/uglyfox/health-check"
+    dlq {
+      name              = "mg-tasks-dlq"
+      message_retention = 86400
     }
   }
 
   database {
-    type = "ydb"
-    name = "polar-gosling-db"
-    mode = "serverless"
+    name            = "polar-gosling-db"
+    type            = "ydb"
+    serverless_mode = true
   }
 
   storage {
@@ -395,16 +425,14 @@ mothergoose {
     region      = "ru-central1"
   }
 
-  service_accounts {
-    mothergoose {
-      name  = "mothergoose-sa"
-      roles = ["lockbox.payloadViewer", "ydb.editor"]
-    }
+  service_account "mg-sa" {
+    description = "MotherGoose service account"
+    roles       = ["lockbox.payloadViewer", "ydb.editor"]
+  }
 
-    uglyfox {
-      name  = "uglyfox-sa"
-      roles = ["lockbox.payloadViewer", "ydb.viewer"]
-    }
+  service_account "uf-sa" {
+    description = "UglyFox service account"
+    roles       = ["lockbox.payloadViewer", "ydb.viewer"]
   }
 }
 `

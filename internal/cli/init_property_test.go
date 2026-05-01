@@ -68,7 +68,7 @@ func TestNestInitializationStructure(t *testing.T) {
 
 				return true
 			},
-			genValidPathName(),
+			genValidDirName(),
 		))
 
 	properties.TestingRun(t, gopter.ConsoleReporter(false))
@@ -178,20 +178,76 @@ Thumbs.db
 	return nil
 }
 
-// genValidPathName generates valid directory path names for testing
-func genValidPathName() gopter.Gen {
-	return gen.OneConstOf(
-		"nest",
-		"my-nest",
-		"test-nest",
-		"nest-repo",
-		"project-nest",
-		"nest_test",
-		"nest123",
-		"a",
-		"ab",
-		"abc",
-	)
+// Feature: gosling-init-upstream, Property 1: Git initialization creates a valid repository
+// For any valid directory path name, running initGitRepo on that path results in a .git
+// directory existing within the target path, confirming a valid Git repository was created.
+// Validates: Requirements 1.1
+func TestGitInitCreatesRepository(t *testing.T) {
+	parameters := gopter.DefaultTestParameters()
+	parameters.MinSuccessfulTests = 10
+	properties := gopter.NewProperties(parameters)
+
+	properties.Property("initGitRepo creates a .git directory in the target path",
+		prop.ForAll(
+			func(pathName string) bool {
+				// Create a temporary directory to act as the parent.
+				tempDir, err := os.MkdirTemp("", "git-init-prop-*")
+				if err != nil {
+					t.Logf("Failed to create temp dir: %v", err)
+					return false
+				}
+				defer os.RemoveAll(tempDir)
+
+				// Build the target directory using the generated path name.
+				targetDir := filepath.Join(tempDir, pathName)
+				if err := os.MkdirAll(targetDir, 0755); err != nil {
+					t.Logf("Failed to create target dir: %v", err)
+					return false
+				}
+
+				// Run initGitRepo on the target directory.
+				if err := initGitRepo(targetDir); err != nil {
+					t.Logf("initGitRepo failed: %v", err)
+					return false
+				}
+
+				// Assert that a .git directory exists inside the target.
+				gitDir := filepath.Join(targetDir, ".git")
+				info, err := os.Stat(gitDir)
+				if err != nil {
+					t.Logf(".git does not exist: %v", err)
+					return false
+				}
+				if !info.IsDir() {
+					t.Logf(".git is not a directory")
+					return false
+				}
+
+				return true
+			},
+			genValidDirName(),
+		))
+
+	properties.TestingRun(t, gopter.ConsoleReporter(false))
+}
+
+// windowsReservedNames is the set of device names reserved by Windows that cannot
+// be used as file or directory names regardless of extension.
+var windowsReservedNames = map[string]struct{}{
+	"con": {}, "prn": {}, "aux": {}, "nul": {},
+	"com1": {}, "com2": {}, "com3": {}, "com4": {}, "com5": {},
+	"com6": {}, "com7": {}, "com8": {}, "com9": {},
+	"lpt1": {}, "lpt2": {}, "lpt3": {}, "lpt4": {}, "lpt5": {},
+	"lpt6": {}, "lpt7": {}, "lpt8": {}, "lpt9": {},
+}
+
+// genValidDirName generates arbitrary valid directory names (alphanumeric, hyphens, underscores)
+// that are safe on all platforms including Windows (reserved names are excluded).
+func genValidDirName() gopter.Gen {
+	return gen.RegexMatch(`[a-z][a-z0-9_-]{0,15}`).SuchThat(func(s string) bool {
+		_, reserved := windowsReservedNames[strings.ToLower(s)]
+		return !reserved
+	})
 }
 
 // Feature: gosling-init-upstream, Property 2: Prompt default value preservation

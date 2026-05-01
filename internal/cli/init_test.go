@@ -53,18 +53,26 @@ func captureStdout(t *testing.T, fn func()) string {
 	os.Stdout = w
 	defer func() {
 		os.Stdout = origStdout
-		w.Close()
+		if err := w.Close(); err != nil {
+			t.Fatalf("failed to close pipe writer: %v", err)
+		}
 	}()
 
 	fn()
 
 	// Close writer before reading so the reader sees EOF.
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("failed to close pipe writer: %v", err)
+	}
 	os.Stdout = origStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
-	r.Close()
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("failed to read from pipe: %v", err)
+	}
+	if err := r.Close(); err != nil {
+		t.Fatalf("failed to close pipe reader: %v", err)
+	}
 	return buf.String()
 }
 
@@ -88,11 +96,16 @@ func TestFlagSkipsPrompts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create pipe: %v", err)
 	}
-	w.Close() // close immediately — no data available
+
+	if err := w.Close(); err != nil {
+		t.Fatalf("failed to close pipe writer: %v", err)
+	}
 	os.Stdin = r
 	t.Cleanup(func() {
 		os.Stdin = origStdin
-		r.Close()
+		if err := r.Close(); err != nil {
+			t.Fatalf("failed to close pipe reader: %v", err)
+		}
 	})
 
 	output := captureStdout(t, func() {
@@ -151,12 +164,18 @@ func TestEmptyURLSkipsRemoteConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create pipe: %v", err)
 	}
-	w.WriteString("\n\n")
-	w.Close()
+	if _, err := w.WriteString("\n\n"); err != nil {
+		t.Fatalf("failed to write to pipe: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("failed to close pipe writer: %v", err)
+	}
 	os.Stdin = r
 	t.Cleanup(func() {
 		os.Stdin = origStdin
-		r.Close()
+		if err := r.Close(); err != nil {
+			t.Fatalf("failed to close pipe reader: %v", err)
+		}
 	})
 
 	output := captureStdout(t, func() {
@@ -239,11 +258,18 @@ func TestNonTerminalSkipsPrompts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create pipe: %v", err)
 	}
-	w.Close() // close writer — pipe is not a terminal
+
+	// close writer — pipe is not a terminal
+	if err := w.Close(); err != nil {
+		t.Fatalf("failed to close pipe writer: %v", err)
+	}
+
 	os.Stdin = r
 	t.Cleanup(func() {
 		os.Stdin = origStdin
-		r.Close()
+		if err := r.Close(); err != nil {
+			t.Fatalf("failed to close pipe reader: %v", err)
+		}
 	})
 
 	output := captureStdout(t, func() {

@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -308,6 +310,97 @@ func TestPromptDefaultPreservation(t *testing.T) {
 		))
 
 	properties.TestingRun(t, gopter.ConsoleReporter(false))
+}
+
+// Feature: gosling-init-upstream, Property 3: Git remote registration round-trip
+// For any valid Git remote name and valid Git remote URL, calling addGitRemote
+// then querying `git remote -v` shows the remote name mapped to the provided URL.
+// Validates: Requirements 2.5, 3.4
+func TestGitRemoteRegistrationRoundTrip(t *testing.T) {
+	parameters := gopter.DefaultTestParameters()
+	parameters.MinSuccessfulTests = 25
+	properties := gopter.NewProperties(parameters)
+
+	properties.Property("addGitRemote registers a remote that is visible via git remote -v",
+		prop.ForAll(
+			func(name string, url string) bool {
+				// Create a temporary directory and initialize a git repo.
+				tempDir, err := os.MkdirTemp("", "git-remote-prop-*")
+				if err != nil {
+					t.Logf("Failed to create temp dir: %v", err)
+					return false
+				}
+				defer os.RemoveAll(tempDir)
+
+				if err := initGitRepo(tempDir); err != nil {
+					t.Logf("initGitRepo failed: %v", err)
+					return false
+				}
+
+				// Add the remote using the function under test.
+				if err := addGitRemote(tempDir, name, url); err != nil {
+					t.Logf("addGitRemote failed: %v", err)
+					return false
+				}
+
+				// Query git remote -v and verify the remote is registered.
+				cmd := exec.Command("git", "remote", "-v")
+				cmd.Dir = tempDir
+				output, err := cmd.Output()
+				if err != nil {
+					t.Logf("git remote -v failed: %v", err)
+					return false
+				}
+
+				lines := strings.Split(string(output), "\n")
+				found := false
+				for _, line := range lines {
+					// Each line looks like: <name>\t<url> (fetch|push)
+					if strings.HasPrefix(line, name+"\t") && strings.Contains(line, url) {
+						found = true
+						break
+					}
+				}
+
+				if !found {
+					t.Logf("Remote %q -> %q not found in git remote -v output:\n%s", name, url, string(output))
+					return false
+				}
+
+				return true
+			},
+			genValidRemoteName(),
+			genValidRemoteURL(),
+		))
+
+	properties.TestingRun(t, gopter.ConsoleReporter(false))
+}
+
+// genValidRemoteName generates valid Git remote names.
+// Git remote names must be non-empty, contain only alphanumeric characters, hyphens,
+// underscores, and dots, and must not start with a dot or hyphen.
+// Windows reserved device names (CON, PRN, AUX, NUL, COM1–9, LPT1–9) are excluded.
+func genValidRemoteName() gopter.Gen {
+	return gen.RegexMatch(`[a-z][a-z0-9_-]{0,15}`).SuchThat(func(s string) bool {
+		if len(s) == 0 {
+			return false
+		}
+		_, reserved := windowsReservedNames[strings.ToLower(s)]
+		return !reserved
+	})
+}
+
+// genValidRemoteURL generates valid Git remote URLs using the https:// scheme.
+// The URLs are syntactically valid but do not need to point to real repositories
+// since addGitRemote only registers the remote without fetching.
+func genValidRemoteURL() gopter.Gen {
+	host := gen.RegexMatch(`[a-z][a-z0-9]{2,10}`)
+	path := gen.RegexMatch(`[a-z][a-z0-9_-]{1,10}/[a-z][a-z0-9_-]{1,10}`)
+	return gopter.CombineGens(host, path).Map(func(vals []interface{}) string {
+		h := vals[0].(string)
+		p := vals[1].(string)
+		return fmt.Sprintf("https://%s.com/%s.git", h, p)
+	})
 }
 
 // genNonEmptyString generates arbitrary non-empty strings for use as default values.

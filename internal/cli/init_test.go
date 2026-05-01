@@ -53,9 +53,6 @@ func captureStdout(t *testing.T, fn func()) string {
 	os.Stdout = w
 	defer func() {
 		os.Stdout = origStdout
-		if err := w.Close(); err != nil {
-			t.Fatalf("failed to close pipe writer: %v", err)
-		}
 	}()
 
 	fn()

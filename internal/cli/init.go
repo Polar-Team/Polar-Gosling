@@ -1,15 +1,21 @@
 package cli
 
 import (
+	"bufio"
 	"fmt"
 	"os"
+	// "os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
 
 var (
-	initPath string
+	initPath   string
+	remoteName string
+	remoteURL  string
+	branchName string
 )
 
 // initCmd represents the init command
@@ -34,7 +40,45 @@ Example:
 func init() {
 	rootCmd.AddCommand(initCmd)
 	initCmd.Flags().StringVarP(&initPath, "path", "p", "", "Path to initialize Nest repository (default: current directory)")
+	initCmd.Flags().StringVar(&remoteName, "remote-name", "origin", "Name for the upstream remote")
+	initCmd.Flags().StringVar(&remoteURL, "remote-url", "", "URL for the upstream remote repository")
+	initCmd.Flags().StringVar(&branchName, "branch", "main", "Default branch name")
 }
+
+// TODO: Placeholder for new functions
+// isTerminal reports whether stdin is connected to a terminal.
+// func isTerminal() bool {
+// 	fi, err := os.Stdin.Stat()
+// 	if err != nil {
+// 		return false
+// 	}
+// 	return fi.Mode()&os.ModeCharDevice != 0
+// }
+
+// promptWithDefault prints a prompt to stdout and reads a line from stdin.
+// If the user input is empty or whitespace-only, it returns defaultVal.
+func promptWithDefault(prompt, defaultVal string) string {
+	fmt.Print(prompt)
+	scanner := bufio.NewScanner(os.Stdin)
+	if scanner.Scan() {
+		input := strings.TrimSpace(scanner.Text())
+		if input != "" {
+			return input
+		}
+	}
+	return defaultVal
+}
+
+// TODO: Placeholder for new functions
+// addGitRemote adds a named remote to the git repository at dir.
+// func addGitRemote(dir, name, url string) error {
+// 	cmd := exec.Command("git", "remote", "add", name, url)
+// 	cmd.Dir = dir
+// 	if err := cmd.Run(); err != nil {
+// 		return fmt.Errorf("failed to add upstream remote: %w", err)
+// 	}
+// 	return nil
+// }
 
 func runInit(cmd *cobra.Command, args []string) error {
 	// Determine the target path

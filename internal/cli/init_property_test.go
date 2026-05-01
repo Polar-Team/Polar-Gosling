@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/leanovate/gopter"
@@ -190,5 +191,87 @@ func genValidPathName() gopter.Gen {
 		"a",
 		"ab",
 		"abc",
+	)
+}
+
+// Feature: gosling-init-upstream, Property 2: Prompt default value preservation
+// For any non-empty default value and empty/whitespace-only user input,
+// promptWithDefault returns the original default unchanged.
+// Validates: Requirements 2.2
+func TestPromptDefaultPreservation(t *testing.T) {
+	parameters := gopter.DefaultTestParameters()
+	parameters.MinSuccessfulTests = 100
+	properties := gopter.NewProperties(parameters)
+
+	properties.Property("promptWithDefault returns default for empty/whitespace input",
+		prop.ForAll(
+			func(defaultVal string, wsInput string) bool {
+				// Create a pipe to simulate stdin with the whitespace input
+				// followed by a newline so bufio.Scanner.Scan() returns true.
+				r, w, err := os.Pipe()
+				if err != nil {
+					t.Logf("Failed to create pipe: %v", err)
+					return false
+				}
+
+				// Write the whitespace input followed by newline, then close writer.
+				_, err = w.WriteString(wsInput + "\n")
+				w.Close()
+				if err != nil {
+					r.Close()
+					t.Logf("Failed to write to pipe: %v", err)
+					return false
+				}
+
+				// Swap os.Stdin with our pipe reader.
+				origStdin := os.Stdin
+				os.Stdin = r
+				defer func() {
+					os.Stdin = origStdin
+					r.Close()
+				}()
+
+				// Also capture stdout to avoid polluting test output with prompts.
+				origStdout := os.Stdout
+				devNull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+				if err != nil {
+					t.Logf("Failed to open devnull: %v", err)
+					return false
+				}
+				os.Stdout = devNull
+				defer func() {
+					os.Stdout = origStdout
+					devNull.Close()
+				}()
+
+				result := promptWithDefault("test prompt: ", defaultVal)
+				return result == defaultVal
+			},
+			genNonEmptyString(),
+			genWhitespaceString(),
+		))
+
+	properties.TestingRun(t, gopter.ConsoleReporter(false))
+}
+
+// genNonEmptyString generates arbitrary non-empty strings for use as default values.
+func genNonEmptyString() gopter.Gen {
+	return gen.AnyString().SuchThat(func(s string) bool {
+		return len(s) > 0
+	})
+}
+
+// genWhitespaceString generates strings that are either empty or contain only whitespace characters.
+// These represent user inputs that should cause promptWithDefault to return the default value.
+func genWhitespaceString() gopter.Gen {
+	return gen.OneGenOf(
+		gen.Const(""),
+		gen.SliceOf(gen.OneConstOf(' ', '\t')).Map(func(chars []int32) string {
+			var sb strings.Builder
+			for _, c := range chars {
+				sb.WriteRune(rune(c))
+			}
+			return sb.String()
+		}),
 	)
 }

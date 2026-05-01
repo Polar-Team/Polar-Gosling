@@ -45,14 +45,15 @@ func init() {
 	initCmd.Flags().StringVar(&branchName, "branch", "main", "Default branch name")
 }
 
+// TODO: Placeholder for new functions
 // isTerminal reports whether stdin is connected to a terminal.
-func isTerminal() bool {
-	fi, err := os.Stdin.Stat()
-	if err != nil {
-		return false
-	}
-	return fi.Mode()&os.ModeCharDevice != 0
-}
+// func isTerminal() bool {
+// 	fi, err := os.Stdin.Stat()
+// 	if err != nil {
+// 		return false
+// 	}
+// 	return fi.Mode()&os.ModeCharDevice != 0
+// }
 
 // promptWithDefault prints a prompt to stdout and reads a line from stdin.
 // If the user input is empty or whitespace-only, it returns defaultVal.
@@ -68,15 +69,16 @@ func promptWithDefault(prompt, defaultVal string) string {
 	return defaultVal
 }
 
+// TODO: Placeholder for new functions
 // addGitRemote adds a named remote to the git repository at dir.
-func addGitRemote(dir, name, url string) error {
-	cmd := exec.Command("git", "remote", "add", name, url)
-	cmd.Dir = dir
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to add upstream remote: %w", err)
-	}
-	return nil
-}
+// func addGitRemote(dir, name, url string) error {
+// 	cmd := exec.Command("git", "remote", "add", name, url)
+// 	cmd.Dir = dir
+// 	if err := cmd.Run(); err != nil {
+// 		return fmt.Errorf("failed to add upstream remote: %w", err)
+// 	}
+// 	return nil
+// }
 
 func runInit(cmd *cobra.Command, args []string) error {
 	// Determine the target path

@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <link rel="icon" type="image/png" href="logo.png" />
   <title>Gosling CLI — Polar Gosling Documentation</title>
   <style>
     :root {
@@ -456,11 +457,11 @@
     <section class="section reveal" id="quickstart">
       <h2>Quickstart</h2>
       <h3>1. Initialize a Nest repository</h3>
-      <pre><code><span class="cmt"># Create a new Nest repository in the current directory</span>
+      <pre><code><span class="cmt"># Create a new Nest repository (interactive — prompts for upstream remote)</span>
 gosling init
 
-<span class="cmt"># Or specify a path</span>
-gosling init /path/to/my-nest</code></pre>
+<span class="cmt"># Or specify a path and upstream remote via flags</span>
+gosling init /path/to/my-nest --remote-url git@github.com:org/nest.git</code></pre>
       <h3>2. Add an Egg configuration</h3>
       <pre><code><span class="cmt"># Add a VM-based runner for a Yandex Cloud project</span>
 gosling add egg my-app --type vm --provider yandex
@@ -517,21 +518,37 @@ sudo mv gosling /usr/local/bin/</code></pre>
         </div>
         <div class="cmd-body">
           <code class="cmd-usage">gosling init [path] [flags]</code>
-          <p>Creates the standard Nest directory structure (<code>Eggs/</code>, <code>Jobs/</code>, <code>UF/</code>) along with a <code>README.md</code> and <code>.gitignore</code>. Defaults to the current directory.</p>
+          <p>Creates the standard Nest directory structure (<code>Eggs/</code>, <code>Jobs/</code>, <code>UF/</code>, <code>MG/</code>) along with default <code>UF/config.fly</code> and <code>MG/config.fly</code> templates, a <code>README.md</code>, and <code>.gitignore</code>. Automatically initializes a Git repository and optionally configures an upstream remote. Defaults to the current directory.</p>
           <table>
             <tr><th>Flag</th><th>Default</th><th>Description</th></tr>
             <tr><td class="flag-name">-p, --path</td><td><code>.</code></td><td>Target directory for the Nest repository <span class="flag-optional">optional</span></td></tr>
+            <tr><td class="flag-name">--remote-name</td><td><code>origin</code></td><td>Name for the upstream Git remote <span class="flag-optional">optional</span></td></tr>
+            <tr><td class="flag-name">--remote-url</td><td>—</td><td>URL for the upstream remote repository. When set, skips interactive prompts <span class="flag-optional">optional</span></td></tr>
+            <tr><td class="flag-name">--branch</td><td><code>main</code></td><td>Default branch name for push instructions <span class="flag-optional">optional</span></td></tr>
           </table>
-          <pre><code>gosling init
+          <pre><code><span class="cmt"># Initialize with interactive remote setup (prompts for name, URL, branch)</span>
+gosling init
+
+<span class="cmt"># Specify a path</span>
 gosling init /path/to/nest
-gosling init --path /path/to/nest</code></pre>
+
+<span class="cmt"># Non-interactive: set the upstream remote via flags</span>
+gosling init --remote-url git@github.com:org/nest.git --remote-name origin --branch main</code></pre>
           <p>After init, the directory will contain:</p>
           <pre><code>Nest/
 ├── Eggs/
 ├── Jobs/
+├── MG/
+│   └── config.fly
 ├── UF/
-├── README.md
-└── .gitignore</code></pre>
+│   └── config.fly
+├── .git/
+├── .gitignore
+└── README.md</code></pre>
+          <div class="callout callout-info">
+            <strong>ℹ️ Upstream remote configuration</strong>
+            When run in a terminal, <code>gosling init</code> interactively prompts for a remote name, URL, and branch. Provide <code>--remote-url</code> to skip prompts (useful in CI/CD). In non-terminal environments without <code>--remote-url</code>, remote configuration is silently skipped.
+          </div>
         </div>
       </div>
     </section>

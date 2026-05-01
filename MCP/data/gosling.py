@@ -6,11 +6,23 @@ GOSLING_COMMANDS: list[dict[str, Any]] = [
     {
         "name": "init",
         "usage": "gosling init [path] [flags]",
-        "description": "Initialize a new Nest repository structure. Creates Eggs/, Jobs/, UF/ directories with a README.md and .gitignore. Defaults to the current directory.",
+        "description": "Initialize a new Nest repository structure. Creates Eggs/, Jobs/, UF/, MG/ directories with README.md, .gitignore, and default .fly config templates. Initializes a Git repository and optionally configures an upstream remote (interactively or via flags). Defaults to the current directory.",
         "flags": [
             {"flag": "--path", "short": "-p", "type": "string", "default": ".", "description": "Target directory for the Nest repository"},
+            {"flag": "--remote-name", "type": "string", "default": "main", "description": "Name for the upstream Git remote"},
+            {"flag": "--remote-url", "type": "string", "default": "", "description": "URL for the upstream Git remote. If set, skips interactive prompts"},
+            {"flag": "--branch", "type": "string", "default": "main", "description": "Default branch name for the upstream remote"},
         ],
-        "example": "gosling init /path/to/nest",
+        "behavior": {
+            "git_init": "Runs 'git init' in the target directory after creating files",
+            "upstream_remote": {
+                "flag_mode": "When --remote-url is provided, uses flag values directly without prompting",
+                "interactive_mode": "When running in a terminal and no --remote-url flag, prompts for remote name (default 'main'), URL, and branch (default 'main'). Empty URL skips remote configuration.",
+                "non_interactive": "When stdin is not a terminal and no --remote-url flag, skips remote configuration silently",
+            },
+            "success_output": "Shows configured remote info and suggests 'git push -u <remote> <branch>'. When no remote is configured, suggests manually adding one.",
+        },
+        "example": "gosling init /path/to/nest --remote-url https://gitlab.com/team/nest.git --branch main",
     },
     {
         "name": "add egg",

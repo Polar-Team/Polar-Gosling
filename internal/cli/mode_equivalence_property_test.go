@@ -63,7 +63,7 @@ func TestCLIModeEquivalence(t *testing.T) {
 
 				return true
 			},
-			genValidPathName(),
+			genValidDirName(),
 		))
 
 	// Test 2: Add egg command equivalence

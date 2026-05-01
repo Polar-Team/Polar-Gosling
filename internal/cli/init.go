@@ -2,9 +2,10 @@ package cli
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"os"
-	// "os/exec"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -67,6 +68,22 @@ func promptWithDefault(prompt, defaultVal string) string {
 		}
 	}
 	return defaultVal
+}
+
+// initGitRepo initializes a new Git repository in the given directory.
+func initGitRepo(dir string) error {
+	var stderr bytes.Buffer
+	cmd := exec.Command("git", "init")
+	cmd.Dir = dir
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(stderr.String())
+		if msg != "" {
+			return fmt.Errorf("failed to initialize git repository: %v: %s", err, msg)
+		}
+		return fmt.Errorf("failed to initialize git repository: %v", err)
+	}
+	return nil
 }
 
 // TODO: Placeholder for new functions
@@ -212,6 +229,16 @@ Thumbs.db
 	}
 	fmt.Println("  ✓ Created .gitignore")
 
+	// Initialize Git repository (skip if already initialized)
+	gitDir := filepath.Join(absPath, ".git")
+	if _, err := os.Stat(gitDir); os.IsNotExist(err) {
+		if err := initGitRepo(absPath); err != nil {
+			return err
+		}
+		fmt.Println("  ✓ Initialized Git repository")
+	} else {
+		fmt.Println("  ✓ Git repository already exists, skipping init")
+	}
 	fmt.Println("\n✅ Nest repository initialized successfully!")
 	fmt.Println("\nNext steps:")
 	fmt.Println("  1. Add an Egg configuration: gosling add egg <name>")

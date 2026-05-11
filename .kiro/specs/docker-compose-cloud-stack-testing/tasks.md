@@ -37,100 +37,100 @@ Compose file and the CI workflow. Dockerfiles for the custom images.
 
 ## Tasks
 
-- [ ] 1. Scaffold `compose/` directory, `.env.example`, and CI workflow skeleton
-  - [ ] 1.1 Create the `dev-new-features/compose/` directory tree
+- [x] 1. Scaffold `compose/` directory, `.env.example`, and CI workflow skeleton
+  - [x] 1.1 Create the `dev-new-features/compose/` directory tree
     - Create subdirectories `compose/`, `compose/nest/{Eggs/sample-egg,Jobs,UF,MG}/`, `compose/seed/fixtures/`, `compose/seed/artifacts/`, `compose/trigger/`, `compose/nest-git/`, `compose/scripts/`, `compose/tests/`.
     - Add a `.gitkeep` in any empty subdirectory so the structure is committed.
     - _Requirements: 1.1_
 
-  - [ ] 1.2 Author `compose/.env.example` with the full variable schema
+  - [x] 1.2 Author `compose/.env.example` with the full variable schema
     - Document every variable from the design's "Environment variable wiring" section: `YDB_IMAGE_TAG`, `LOCALSTACK_IMAGE_TAG`, `CELERY_BROKER_IMAGE_TAG`, `NEST_GIT_IMAGE_TAG`, `MG_IMAGE_TAG`, `UF_IMAGE_TAG`, `INTERNAL_SYNC_TOKEN`, `TRIGGER_SYNC_INTERVAL_SECONDS`, `AWS_DEFAULT_REGION`, `MOTHERGOOSE_API_HOST_PORT`.
     - Precede each variable with a one-line comment documenting its purpose and accepted range or format.
     - Mark variables without a concrete default with a trailing `# REQUIRED` comment; give the rest a non-empty default value.
     - Exactly one `KEY=value` declaration per line; no trailing whitespace.
     - _Requirements: 11.1, 11.2, 11.3, 11.4_
 
-  - [ ] 1.3 Create an empty CI workflow placeholder at `dev-new-features/.github/workflows/compose-smoke.yml`
+  - [x] 1.3 Create an empty CI workflow placeholder at `dev-new-features/.github/workflows/compose-smoke.yml`
     - File exists with just a `name: compose-smoke` header and a TODO comment so later tasks can extend it without creating the file twice.
     - _Requirements: 16.1_
 
-- [ ] 2. Define `docker-compose.yml` infrastructure-tier services
-  - [ ] 2.1 Create `compose/docker-compose.yml` skeleton with networks and volumes
+- [x] 2. Define `docker-compose.yml` infrastructure-tier services
+  - [x] 2.1 Create `compose/docker-compose.yml` skeleton with networks and volumes
     - Declare the top-level `name: pg-stack` project name.
     - Declare top-level `networks.pg-stack-net` with explicit `name: pg-stack-net` and driver `bridge`.
     - Declare top-level `volumes.pg-stack-localstack-data` and `volumes.pg-stack-celery-broker-data`, each with an explicit `name:` matching the key.
     - Add `services: {}` placeholder so subsequent sub-tasks can append without editing an empty file.
     - _Requirements: 1.1, 1.3, 13.2, 13.3_
 
-  - [ ] 2.2 Add the `ydb` service to `docker-compose.yml`
+  - [x] 2.2 Add the `ydb` service to `docker-compose.yml`
     - `container_name: pg-stack-ydb`, image `ydbplatform/local-ydb:${YDB_IMAGE_TAG:?set YDB_IMAGE_TAG in .env}`, `YDB_USE_IN_MEMORY_PDISKS=true`.
     - Publish `127.0.0.1:2136:2136` (gRPC) and `127.0.0.1:8765:8765` (console), no volumes.
     - Attach to `pg-stack-net`, healthcheck probes gRPC on port 2136 with `interval=10s`, `timeout=5s`, `start_period=120s`, `retries=12`.
     - _Requirements: 1.2, 1.3, 2.1, 2.2, 2.3, 2.4, 13.1, 13.4_
 
-  - [ ] 2.3 Add the `localstack` service to `docker-compose.yml`
+  - [x] 2.3 Add the `localstack` service to `docker-compose.yml`
     - `container_name: pg-stack-localstack`, image `localstack/localstack:${LOCALSTACK_IMAGE_TAG:?set LOCALSTACK_IMAGE_TAG in .env}`, env `SERVICES=s3,sqs,events,secretsmanager`, `DEFAULT_REGION=us-east-1`, `LS_LOG=warn`, `PERSISTENCE=0`.
     - Publish `127.0.0.1:4566:4566`; mount `pg-stack-localstack-data:/var/lib/localstack`.
     - Healthcheck `curl -fsS http://localhost:4566/_localstack/health` with `interval=5s`, `timeout=5s`, `start_period=60s`, `retries=12`.
     - _Requirements: 1.2, 3.1, 3.2, 3.3, 3.4, 13.4_
 
-  - [ ] 2.4 Add the `celery-broker` service to `docker-compose.yml`
+  - [x] 2.4 Add the `celery-broker` service to `docker-compose.yml`
     - `container_name: pg-stack-celery-broker`, image `redis:${CELERY_BROKER_IMAGE_TAG:?set CELERY_BROKER_IMAGE_TAG in .env}`, no published host ports.
     - Mount `pg-stack-celery-broker-data:/data` (per design — preserved on `compose-down`).
     - Healthcheck `["CMD", "redis-cli", "ping"]` with `interval=5s`, `timeout=5s`, `start_period=30s`, `retries=6`.
     - _Requirements: 1.2, 4.1, 4.2, 4.3, 13.1, 13.2, 13.4_
 
-  - [ ]* 2.5 Write property test `test_compose_properties.py::test_network_attachment`
+  - [x] 2.5 Write property test `test_compose_properties.py::test_network_attachment`
     - **Property 1: Every Cloud_Stack service attaches to `pg-stack-net`**
     - **Validates: Requirements 1.3, 13.3**
     - Use `python-dotenv` + `pyyaml` (or `docker compose config --format json` via subprocess) in a `hypothesis`-driven test that substitutes arbitrary values for the env vars that have defaults and asserts that every resolved service attaches to `pg-stack-net` and that no service declares a network absent from the top-level `networks` map.
 
-  - [ ]* 2.6 Write property test `test_compose_properties.py::test_image_pins`
+  - [x] 2.6 Write property test `test_compose_properties.py::test_image_pins`
     - **Property 2: No Compose `image:` reference is floating or unpinned**
     - **Validates: Requirements 1.5, 2.1, 3.1, 4.1**
     - Hypothesis strategy generates legal `MAJOR.MINOR.PATCH` and `MAJOR.MINOR` pins for image-tag env vars, and asserts each resolved `image:` contains a `:`, does not end with `:latest`, is non-empty, and — for env-driven tags — matches the regex `^\d{1,4}\.\d{1,4}(\.\d{1,4})?$`.
 
-  - [ ]* 2.7 Write property test `test_compose_properties.py::test_internal_only_services_publish_no_ports`
+  - [x] 2.7 Write property test `test_compose_properties.py::test_internal_only_services_publish_no_ports`
     - **Property 19: Internal-only services publish no host ports**
     - **Validates: Requirement 13.4**
     - Assert that services `celery-broker`, `mothergoose-worker`, `uglyfox-worker`, `trigger-emulator`, `seed`, and `nest-git` declare no `ports:` key or an empty list.
 
-  - [ ]* 2.8 Write property test `test_compose_properties.py::test_resource_name_prefixes`
+  - [x] 2.8 Write property test `test_compose_properties.py::test_resource_name_prefixes`
     - **Property 18: All stack-owned resources carry the `pg-stack-` prefix**
     - **Validates: Requirements 13.1, 13.2, 13.3**
     - Assert every `container_name`, every top-level volume key and its `name`, and every top-level network key and its `name` begins with `pg-stack-`.
 
-- [ ] 3. Author the sample Nest repository content under `compose/nest/`
-  - [ ] 3.1 Create `compose/nest/Eggs/sample-egg/config.fly`
+- [x] 3. Author the sample Nest repository content under `compose/nest/`
+  - [x] 3.1 Create `compose/nest/Eggs/sample-egg/config.fly`
     - Define a minimal `egg "sample-egg" { … }` block matching the design's sample, referencing `aws-sm://pg-stack/gitlab_token` and `aws-sm://pg-stack/webhook_secret` as secret URIs and `aws` / `us-east-1` / `serverless` as runner wiring.
     - _Requirements: 8.2_
 
-  - [ ] 3.2 Create `compose/nest/Jobs/rotate-secrets.fly`
+  - [x] 3.2 Create `compose/nest/Jobs/rotate-secrets.fly`
     - Define a minimal `job "rotate-secrets" { … }` block with a cron `schedule`, AWS serverless runner, and a trivial heredoc `script`.
     - _Requirements: 8.2_
 
-  - [ ] 3.3 Create `compose/nest/UF/config.fly`
+  - [x] 3.3 Create `compose/nest/UF/config.fly`
     - Define a minimal `uglyfox { pruning { … } apex_pool = { … } nadir_pool = { … } }` block per the design sample.
     - _Requirements: 8.2_
 
-  - [ ] 3.4 Create `compose/nest/MG/config.fly`
+  - [x] 3.4 Create `compose/nest/MG/config.fly`
     - Define a minimal `mothergoose { sync_interval_seconds = 300 api_gateway = { path_prefix = "/api/v1" } }` block.
     - _Requirements: 8.2_
 
-  - [ ]* 3.5 Write property test `test_nest_parseability.py::test_every_nest_directory_has_parseable_fly`
+  - [x] 3.5 Write property test `test_nest_parseability.py::test_every_nest_directory_has_parseable_fly`
     - **Property 12: Every Nest directory contains a parseable `.fly` file**
     - **Validates: Requirement 8.2**
     - For each directory in `{Eggs, Jobs, UF, MG}` under `compose/nest/`, assert at least one `.fly` file exists and that `gosling parse <path> --type=<inferred>` exits with status 0 (skip the test with a clear marker if the `gosling` binary is not on PATH so local developers without the Go build can still run the rest of the suite).
 
-- [ ] 4. Build the `nest-git` container image and wire it into Compose
-  - [ ] 4.1 Create `compose/nest-git/Dockerfile`
+- [x] 4. Build the `nest-git` container image and wire it into Compose
+  - [x] 4.1 Create `compose/nest-git/Dockerfile`
     - Base on `alpine:3.20` (pinned), install `git` and `git-daemon` and `lighttpd` (or `git-http-backend` via busybox) to serve the repo.
     - At image build time, `COPY ../nest /srv/nest-src`, then run `git init --bare /srv/git/nest.git`, initialise a working tree under `/tmp/work`, copy `/srv/nest-src/*` in, `git add -A && git commit -m 'seed' && git push /srv/git/nest.git main`.
     - Expose port `80`; configure the HTTP server to route `/nest.git/*` to `git-http-backend` via CGI.
     - Drop to a non-root user.
     - _Requirements: 8.1, 8.2_
 
-  - [ ] 4.2 Add the `nest-git` service to `docker-compose.yml`
+  - [x] 4.2 Add the `nest-git` service to `docker-compose.yml`
     - `container_name: pg-stack-nest-git`, `build: { context: ./nest-git, dockerfile: Dockerfile }`, image tag `pg-stack/nest-git:${NEST_GIT_IMAGE_TAG:-0.1.0}`.
     - No published ports (reachable only as `http://nest-git/nest.git` inside `pg-stack-net`).
     - Healthcheck `curl -fsS http://localhost/nest.git/info/refs?service=git-upload-pack` with `interval=5s`, `timeout=5s`, `start_period=30s`, `retries=6`.

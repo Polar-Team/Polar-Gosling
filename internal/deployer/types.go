@@ -126,11 +126,17 @@ type Container struct {
 	ExpiresAt time.Time
 }
 
+// DeployResult contains outputs extracted from backend infrastructure deployment.
+type DeployResult struct {
+	APIGatewayURL string // HTTPS URL of the deployed API Gateway
+	APIKey        string // Generated API key for authentication
+}
+
 // CloudDeployer is the interface for deploying backend infrastructure to cloud providers
 // Note: Individual runner deployment is handled by MotherGoose using OpenTofu, not by Gosling CLI
 type CloudDeployer interface {
 	// DeployBackendInfrastructure deploys MotherGoose, UglyFox, databases, and storage
-	DeployBackendInfrastructure(ctx context.Context, mgCfg *MGConfig, ufCfg *UFConfig) error
+	DeployBackendInfrastructure(ctx context.Context, mgCfg *MGConfig, ufCfg *UFConfig) (*DeployResult, error)
 
 	// GetStatus retrieves the current status of infrastructure
 	GetStatus(ctx context.Context, resourceID string) (string, error)

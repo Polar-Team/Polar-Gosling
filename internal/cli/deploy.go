@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/polar-gosling/gosling/internal/bootstrap"
 	"github.com/polar-gosling/gosling/internal/deployer"
 	"github.com/polar-gosling/gosling/internal/mothergoose"
 	"github.com/polar-gosling/gosling/internal/parser"
@@ -38,11 +39,15 @@ func init() {
 	deployCmd.Flags().StringVar(&deployName, "name", "", "Deploy a specific MG instance by name (deploys all if omitted)")
 	deployCmd.Flags().StringVar(&deployAPIURL, "api-url", "", "MotherGoose API URL")
 	deployCmd.Flags().StringVar(&deployAPIKey, "api-key", "", "MotherGoose API key")
-	mustMarkRequired(deployCmd, "api-url")
-	mustMarkRequired(deployCmd, "api-key")
 }
 
 func runDeploy(cmd *cobra.Command, args []string) error {
+	useBootstrap, err := bootstrap.ValidateDeployFlags(deployAPIURL, deployAPIKey)
+	if err != nil {
+		return err
+	}
+	_ = useBootstrap // will be used in subsequent tasks
+
 	ctx := context.Background()
 
 	nestRoot, err := findNestRoot()
@@ -109,7 +114,8 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		if err := dep.DeployBackendInfrastructure(ctx, mg, uf); err != nil {
+		_, err := dep.DeployBackendInfrastructure(ctx, mg, uf)
+		if err != nil {
 			return fmt.Errorf("failed to deploy backend %s: %w", mg.Name, err)
 		}
 		fmt.Printf("Backend %s deployed successfully\n", mg.Name)

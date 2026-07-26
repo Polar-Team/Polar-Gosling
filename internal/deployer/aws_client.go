@@ -37,7 +37,7 @@ func NewAWSClient(ctx context.Context, region string) (*AWSClient, error) {
 
 // DeployBackendInfrastructure deploys MotherGoose, UglyFox, DynamoDB, and S3 buckets
 // using the parsed MG and UF .fly configurations.
-func (c *AWSClient) DeployBackendInfrastructure(ctx context.Context, mgCfg *MGConfig, ufCfg *UFConfig) error {
+func (c *AWSClient) DeployBackendInfrastructure(ctx context.Context, mgCfg *MGConfig, ufCfg *UFConfig) (*DeployResult, error) {
 	// Task 39: Implement deployment of:
 	// - MotherGoose Lambda function (mgCfg.FastAPIApp)
 	// - UglyFox Lambda function (ufCfg.Workers)
@@ -47,7 +47,7 @@ func (c *AWSClient) DeployBackendInfrastructure(ctx context.Context, mgCfg *MGCo
 	// - SQS queues (mgCfg.MessageQueues)
 	// - EventBridge triggers (mgCfg.Triggers)
 	// - IAM roles (mgCfg.ServiceAccounts, ufCfg.ServiceAccount)
-	return fmt.Errorf("not yet implemented")
+	return nil, fmt.Errorf("not yet implemented")
 }
 
 // GetStatus retrieves the status of infrastructure resources

@@ -70,7 +70,7 @@ func NewYandexCloudClient(ctx context.Context, folderID, cloudID string) (*Yande
 }
 
 // DeployBackendInfrastructure deploys all bootstrap infrastructure using the parsed MG/UF configs.
-func (c *YandexCloudClient) DeployBackendInfrastructure(ctx context.Context, mgCfg *MGConfig, ufCfg *UFConfig) error {
+func (c *YandexCloudClient) DeployBackendInfrastructure(ctx context.Context, mgCfg *MGConfig, ufCfg *UFConfig) (*DeployResult, error) {
 	steps := []struct {
 		msg string
 		fn  func(context.Context, *MGConfig, *UFConfig) error
@@ -90,10 +90,21 @@ func (c *YandexCloudClient) DeployBackendInfrastructure(ctx context.Context, mgC
 		if err := spinner.Run(s.msg, func() error {
 			return s.fn(ctx, mgCfg, ufCfg)
 		}); err != nil {
-			return err
+			return nil, err
 		}
 	}
-	return nil
+
+	// Generate API key for authentication
+	apiKeyBytes := make([]byte, 32)
+	if _, err := rand.Read(apiKeyBytes); err != nil {
+		return nil, fmt.Errorf("failed to generate API key: %w", err)
+	}
+	apiKey := hex.EncodeToString(apiKeyBytes)
+
+	return &DeployResult{
+		APIGatewayURL: c.apiGatewayURL,
+		APIKey:        apiKey,
+	}, nil
 }
 
 // saIDByName returns the cloud ID for the service account with the given name,
